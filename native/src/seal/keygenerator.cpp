@@ -326,11 +326,11 @@ namespace seal
         // Generate Galois keys for m - 1 (X -> X^{m-1})
         galois_elts.push_back(m - 1);
 
-        // Generate Galois key for power of 3 mod m (X -> X^{3^k}) and
-        // for negative power of 3 mod m (X -> X^{-3^k})
-        uint64_t two_power_of_three = 3;
+        // Generate Galois key for power of 5 mod m (X -> X^{5^k}) and
+        // for negative power of 5 mod m (X -> X^{-5^k})
+        uint64_t two_power_of_three = 5;
         uint64_t neg_two_power_of_three = 0;
-        try_mod_inverse(3, m, neg_two_power_of_three);
+        try_mod_inverse(5, m, neg_two_power_of_three);
         for (int i = 0; i < logn - 1; i++)
         {
             galois_elts.push_back(two_power_of_three);

@@ -252,7 +252,7 @@ namespace seal
                 }
 
                 // Construct Galois element for row rotation
-                uint64_t gen = 3;
+                uint64_t gen = 5;
                 uint64_t galois_elt = 1;
                 while(step--)
                 {
