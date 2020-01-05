@@ -29,6 +29,19 @@ namespace seal
             std::uint64_t *destination);
 
         /**
+        Generate a polynomial with specificed hamming weight and store in RNS representation.
+
+        @param[in] hwt Hamming weight
+        @param[in] rng A uniform random generator.
+        @param[in] parms EncryptionParameters used to parametize an RNS polynomial.
+        @param[out] destination Allocated space to store a random polynomia.
+        */
+        void sample_poly_hwt(
+            std::uint64_t hwt,
+            std::shared_ptr<UniformRandomGenerator> rng,
+            const EncryptionParameters &parms,
+            std::uint64_t *destination);
+        /**
         Generate a polynomial from a normal distribution and store in RNS representation.
 
         @param[in] rng A uniform random generator.

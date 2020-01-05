@@ -55,6 +55,60 @@ namespace seal
             }
         }
 
+        void sample_poly_hwt(
+            std::uint64_t hwt,
+            std::shared_ptr<UniformRandomGenerator> rng,
+            const EncryptionParameters &parms,
+            std::uint64_t *destination) {
+
+            const auto &coeff_modulus = parms.coeff_modulus();
+            size_t coeff_mod_count = coeff_modulus.size();
+            size_t coeff_count = parms.poly_modulus_degree();
+
+            if (hwt >= coeff_count || hwt == 0)
+              throw std::logic_error("sample_poly_hwt: hwt out of bound");
+
+            RandomToStandardAdapter engine(rng);
+            /* reservoir sampling */
+            std::vector<int> picked(hwt);
+            std::iota(picked.begin(), picked.end(), 0);
+            for (size_t k = hwt; k < coeff_count; ++k) {
+                uniform_int_distribution<size_t> dist(0, k - 1);
+                size_t pos = dist(engine); // uniform in [0, k)
+                if (pos < hwt)
+                    picked[pos] = k;
+            }
+
+            /* For the picked poistions, sample {-1, 1} uniformly at random */
+            std::vector<bool> rnd2(hwt);
+            uniform_int_distribution<int> dist(0, 1);
+            for (size_t i = 0; i < hwt; ++i) {
+                rnd2[i] = dist(engine);
+            }
+
+            std::sort(picked.begin(), picked.end());
+            std::uint64_t *dst_ptr = destination;
+            for (size_t j = 0; j < coeff_mod_count; j++) {
+                const std::uint64_t one = 1;
+                const std::uint64_t neg_one = coeff_modulus[j].value() - 1;
+                std::memset(dst_ptr, 0, sizeof(*dst_ptr) * coeff_count);
+                for (size_t i = 0; i < hwt; ++i) {
+                    dst_ptr[picked[i]] = [one, neg_one](bool b) {
+                        // b = true -> c = 0xFF -> one
+                        // b = false -> c = 0x00 -> neg_one
+                        uint64_t c = -static_cast<uint64_t>(b);
+                        uint64_t d = one ^ neg_one;
+                        return (d & c) ^ neg_one;
+                    } (rnd2[i]);
+                }
+                dst_ptr += coeff_count;
+            }
+
+            for (size_t i = 0; i < hwt; ++i) { rnd2[i] = 0; }
+
+            std::memset(picked.data(), 0, sizeof(picked[0]) * picked.size());
+        }
+
         void sample_poly_normal(
             shared_ptr<UniformRandomGenerator> rng,
             const EncryptionParameters &parms,
