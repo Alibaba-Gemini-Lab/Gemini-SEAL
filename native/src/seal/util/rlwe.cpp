@@ -89,16 +89,15 @@ namespace seal
             std::sort(picked.begin(), picked.end());
             std::uint64_t *dst_ptr = destination;
             for (size_t j = 0; j < coeff_mod_count; j++) {
-                const std::uint64_t one = 1;
                 const std::uint64_t neg_one = coeff_modulus[j].value() - 1;
+                const std::uint64_t xor_one = neg_one ^ 1UL;
                 std::memset(dst_ptr, 0, sizeof(*dst_ptr) * coeff_count);
                 for (size_t i = 0; i < hwt; ++i) {
-                    dst_ptr[picked[i]] = [one, neg_one](bool b) {
+                    dst_ptr[picked[i]] = [xor_one, neg_one](bool b) {
                         // b = true -> c = 0xFF -> one
                         // b = false -> c = 0x00 -> neg_one
                         uint64_t c = -static_cast<uint64_t>(b);
-                        uint64_t d = one ^ neg_one;
-                        return (d & c) ^ neg_one;
+                        return (xor_one & c) ^ neg_one;
                     } (rnd2[i]);
                 }
                 dst_ptr += coeff_count;
