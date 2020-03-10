@@ -1178,6 +1178,121 @@ namespace seal
 #endif
     }
 
+    void Evaluator::rescale_by_bits(const Ciphertext &encrypted,
+        Ciphertext &destination, int nbits, MemoryPoolHandle pool)
+    {
+        auto context_data_ptr = context_->get_context_data(encrypted.parms_id());
+        if (context_data_ptr->parms().scheme() == scheme_type::BFV &&
+            encrypted.is_ntt_form())
+        {
+            throw invalid_argument("BFV encrypted cannot be in NTT form");
+        }
+        if (context_data_ptr->parms().scheme() == scheme_type::CKKS &&
+            !encrypted.is_ntt_form())
+        {
+            throw invalid_argument("CKKS encrypted must be in NTT form");
+        }
+        if (!pool)
+        {
+            throw invalid_argument("pool is uninitialized");
+        }
+
+        // Extract encryption parameters.
+        auto &context_data = *context_data_ptr;
+        bool is_ckks = (context_data.parms().scheme() == scheme_type::CKKS);
+        size_t coeff_count = context_data.parms().poly_modulus_degree();
+        size_t encrypted_size = encrypted.size();
+        // q_1,...,q_{k-1}, q_k
+        auto &coeff_modulus = context_data.parms().coeff_modulus();
+        size_t coeff_mod_count = coeff_modulus.size();
+        size_t next_coeff_mod_count = coeff_mod_count - 1;
+        auto &next_context_data = *context_data.next_context_data();
+        auto &inv_last_coeff_mod_array = context_data.base_converter()->get_inv_last_coeff_mod_array();
+        auto last_modulus = coeff_modulus.back();
+
+        // Size test
+        if (!product_fits_in(coeff_count, encrypted_size, next_coeff_mod_count))
+        {
+            throw logic_error("invalid parameters");
+        }
+
+        if (nbits < 1 || nbits > 60)
+        {
+          throw logic_error("invalid parameters: nbits");
+        }
+        double factor = static_cast<double>(1L << nbits);
+        if (last_modulus.value() < factor)
+        {
+          throw logic_error("invalid parameters: nbits");
+        }
+
+        // In CKKS need to transform away from NTT form
+        Ciphertext encrypted_copy(pool);
+        encrypted_copy = encrypted;
+        if (is_ckks)
+        {
+            transform_from_ntt_inplace(encrypted_copy);
+        }
+
+        uint64_t scaleUp = (uint64_t) std::round(last_modulus.value() / factor);
+        
+        auto temp1(allocate_uint(coeff_count, pool));
+
+        // Allocate enough room for the result
+        auto temp2(allocate_poly(coeff_count * encrypted_size, next_coeff_mod_count, pool));
+        auto temp2_ptr = temp2.get();
+
+        for (size_t poly_index = 0; poly_index < encrypted_size; poly_index++)
+        {
+            // Set temp1 to ct mod qk
+            set_uint_uint(
+                encrypted_copy.data(poly_index) + next_coeff_mod_count * coeff_count,
+                coeff_count, temp1.get());
+            // Add (p-1)/2 to change from flooring to rounding.
+            uint64_t half = last_modulus.value() >> 1;
+            for (size_t j = 0; j < coeff_count; j++)
+            {
+                temp1.get()[j] = barrett_reduce_63(temp1.get()[j] + half, last_modulus);
+            }
+            for (size_t mod_index = 0; mod_index < next_coeff_mod_count; mod_index++,
+                temp2_ptr += coeff_count)
+            {
+                // (ct mod qk) mod qi
+                modulo_poly_coeffs_63(temp1.get(), coeff_count, coeff_modulus[mod_index], temp2_ptr);
+                uint64_t half_mod = barrett_reduce_63(half, coeff_modulus[mod_index]);
+                for (size_t j = 0; j < coeff_count; j++)
+                {
+                   temp2_ptr[j] = sub_uint_uint_mod(temp2_ptr[j], half_mod, coeff_modulus[mod_index]);
+                }
+                // ((ct mod qi) - (ct mod qk)) mod qi
+                sub_poly_poly_coeffmod(
+                    encrypted_copy.data(poly_index) + mod_index * coeff_count, temp2_ptr,
+                    coeff_count, coeff_modulus[mod_index], temp2_ptr);
+
+                uint64_t scaleUp_ = barrett_reduce_63(scaleUp, coeff_modulus[mod_index]);
+                uint64_t factor_ = multiply_uint_uint_mod(scaleUp_, inv_last_coeff_mod_array[mod_index], coeff_modulus[mod_index]);
+                // qk^(-1) * ((ct mod qi) - (ct mod qk)) mod qi
+                multiply_poly_scalar_coeffmod(temp2_ptr, coeff_count, factor_, coeff_modulus[mod_index], temp2_ptr);
+            }
+        }
+
+        // Resize destination
+        destination.resize(context_, next_context_data.parms_id(), encrypted_size);
+        destination.is_ntt_form() = false;
+
+        set_poly_poly(temp2.get(), coeff_count * encrypted_size, next_coeff_mod_count,
+            destination.data());
+
+        // In CKKS need to transform back to NTT form
+        if (is_ckks)
+        {
+            transform_to_ntt_inplace(destination);
+
+            // Also change the scale
+            destination.scale() = encrypted.scale() / factor;
+        }
+    }
+
     void Evaluator::mod_switch_scale_to_next(const Ciphertext &encrypted,
         Ciphertext &destination, MemoryPoolHandle pool)
     {
@@ -2568,17 +2683,22 @@ namespace seal
         }
 
         // Extract encryption parameters.
-        size_t coeff_count = parms.poly_modulus_degree();
-        size_t decomp_mod_count = parms.coeff_modulus().size();
+        size_t degree  = parms.poly_modulus_degree();
+
+        auto &ct_modulus = parms.coeff_modulus();
+        size_t ct_mod_count = parms.coeff_modulus().size();
+
         auto &key_modulus = key_parms.coeff_modulus();
-        size_t key_mod_count = key_modulus.size();
-        size_t rns_mod_count = decomp_mod_count + 1;
+        size_t all_rns_count = key_modulus.size();
+        size_t n_special_primes = all_rns_count - context_->get_context_data(context_->first_parms_id())->parms().coeff_modulus().size();
+        // size_t rns_mod_count = decomp_mod_count + 1;
+
         auto &small_ntt_tables = key_context_data.small_ntt_tables();
         auto &modswitch_factors = key_context_data.base_converter()->
             get_inv_last_coeff_mod_array();
 
         // Size check
-        if (!product_fits_in(coeff_count, rns_mod_count, size_t(2)))
+        if (!product_fits_in(degree, ct_mod_count, size_t(2)))
         {
             throw logic_error("invalid parameters");
         }
@@ -2599,22 +2719,21 @@ namespace seal
 
         // Temporary results
         Pointer<uint64_t> temp_poly[2] {
-            allocate_zero_poly(2 * coeff_count, rns_mod_count, pool),
-            allocate_zero_poly(2 * coeff_count, rns_mod_count, pool)
+            allocate_zero_poly(2 * degree, ct_mod_count + n_special_primes, pool),
+            allocate_zero_poly(2 * degree, ct_mod_count + n_special_primes, pool)
         };
 
-        // RNS decomposition index = key index
-        for (size_t i = 0; i < decomp_mod_count; i++)
+        for (size_t i = 0; i < ct_mod_count; i++)
         {
             // For each RNS decomposition, multiply with key data and sum up.
-            auto local_small_poly_0(allocate_uint(coeff_count, pool));
-            auto local_small_poly_1(allocate_uint(coeff_count, pool));
-            auto local_small_poly_2(allocate_uint(coeff_count, pool));
+            auto local_small_poly_0(allocate_uint(degree, pool));
+            auto local_small_poly_1(allocate_uint(degree, pool));
+            auto local_small_poly_2(allocate_uint(degree, pool));
 
             const uint64_t *local_encrypted_ptr = nullptr;
             set_uint_uint(
-                target + i * coeff_count,
-                coeff_count,
+                target + i * degree,
+                degree,
                 local_small_poly_0.get());
             if (scheme == scheme_type::CKKS)
             {
@@ -2623,12 +2742,12 @@ namespace seal
                     small_ntt_tables[i]);
             }
             // Key RNS representation
-            for (size_t j = 0; j < rns_mod_count; j++)
+            for (size_t j = 0; j < ct_mod_count + n_special_primes; j++)
             {
-                size_t index = (j == decomp_mod_count ? key_mod_count - 1 : j);
+                size_t index = (j == ct_mod_count ? all_rns_count - (ct_mod_count + n_special_primes - j) : j);
                 if (scheme == scheme_type::CKKS && i == j)
                 {
-                    local_encrypted_ptr = target + j * coeff_count;
+                    local_encrypted_ptr = target + j * degree;
                 }
                 else
                 {
@@ -2637,14 +2756,14 @@ namespace seal
                     {
                         set_uint_uint(
                             local_small_poly_0.get(),
-                            coeff_count,
+                            degree,
                             local_small_poly_1.get());
                     }
                     else
                     {
                         modulo_poly_coeffs_63(
                             local_small_poly_0.get(),
-                            coeff_count,
+                            degree,
                             key_modulus[index],
                             local_small_poly_1.get());
                     }
@@ -2658,20 +2777,8 @@ namespace seal
                 // Two components in key
                 for (size_t k = 0; k < 2; k++)
                 {
-                    // dyadic_product_coeffmod(
-                    //     local_encrypted_ptr,
-                    //     key_vector[i].data(k) + index * coeff_count,
-                    //     coeff_count,
-                    //     key_modulus[index],
-                    //     local_small_poly_2.get());
-                    // add_poly_poly_coeffmod(
-                    //     local_small_poly_2.get(),
-                    //     temp_poly[k].get() + j * coeff_count,
-                    //     coeff_count,
-                    //     key_modulus[index],
-                    //     temp_poly[k].get() + j * coeff_count);
                     const uint64_t *key_ptr = key_vector[i].data().data(k);
-                    for (size_t l = 0; l < coeff_count; l++)
+                    for (size_t l = 0; l < degree; l++)
                     {
                         unsigned long long local_wide_product[2];
                         unsigned long long local_low_word;
@@ -2679,15 +2786,15 @@ namespace seal
 
                         multiply_uint64(
                             local_encrypted_ptr[l],
-                            key_ptr[(index * coeff_count) + l],
+                            key_ptr[(index * degree) + l],
                             local_wide_product);
                         local_carry = add_uint64(
-                            temp_poly[k].get()[(j * coeff_count + l) * 2],
+                            temp_poly[k].get()[(j * degree+ l) * 2],
                             local_wide_product[0],
                             &local_low_word);
-                        temp_poly[k].get()[(j * coeff_count + l) * 2] =
+                        temp_poly[k].get()[(j * degree + l) * 2] =
                             local_low_word;
-                        temp_poly[k].get()[(j * coeff_count + l) * 2 + 1] +=
+                        temp_poly[k].get()[(j * degree + l) * 2 + 1] +=
                             local_wide_product[1] + local_carry;
                     }
                 }
@@ -2696,38 +2803,38 @@ namespace seal
 
         // Results are now stored in temp_poly[k]
         // Modulus switching should be performed
-        auto local_small_poly(allocate_uint(coeff_count, pool));
+        auto local_small_poly(allocate_uint(degree, pool));
         for (size_t k = 0; k < 2; k++)
         {
             // Reduce (ct mod 4qk) mod qk
             uint64_t *temp_poly_ptr = temp_poly[k].get() +
-                decomp_mod_count * coeff_count * 2;
-            for (size_t l = 0; l < coeff_count; l++)
+                ct_mod_count * degree * 2;
+            for (size_t l = 0; l < degree; l++)
             {
                 temp_poly_ptr[l] = barrett_reduce_128(
                     temp_poly_ptr + l * 2,
-                    key_modulus[key_mod_count - 1]);
+                    key_modulus[all_rns_count - 1]);
             }
             // Lazy reduction, they are then reduced mod qi
-            uint64_t *temp_last_poly_ptr = temp_poly[k].get() + decomp_mod_count * coeff_count * 2;
+            uint64_t *temp_last_poly_ptr = temp_poly[k].get() + ct_mod_count * degree * 2;
             inverse_ntt_negacyclic_harvey_lazy(
                 temp_last_poly_ptr,
-                small_ntt_tables[key_mod_count - 1]);
+                small_ntt_tables[all_rns_count - 1]);
 
             // Add (p-1)/2 to change from flooring to rounding.
-            uint64_t half = key_modulus[key_mod_count - 1].value() >> 1;
-            for (size_t l = 0; l < coeff_count; l++)
+            uint64_t half = key_modulus[all_rns_count - 1].value() >> 1;
+            for (size_t l = 0; l < degree; l++)
             {
                 temp_last_poly_ptr[l] = barrett_reduce_63(temp_last_poly_ptr[l] + half,
-                    key_modulus[key_mod_count - 1]);
+                    key_modulus[all_rns_count - 1]);
             }
 
             uint64_t *encrypted_ptr = encrypted.data(k);
-            for (size_t j = 0; j < decomp_mod_count; j++)
+            for (size_t j = 0; j < ct_mod_count; j++)
             {
-                temp_poly_ptr = temp_poly[k].get() + j * coeff_count * 2;
+                temp_poly_ptr = temp_poly[k].get() + j * degree * 2;
                 // (ct mod 4qi) mod qi
-                for (size_t l = 0; l < coeff_count; l++)
+                for (size_t l = 0; l < degree; l++)
                 {
                     temp_poly_ptr[l] = barrett_reduce_128(
                         temp_poly_ptr + l * 2,
@@ -2736,12 +2843,12 @@ namespace seal
                 // (ct mod 4qk) mod qi
                 modulo_poly_coeffs_63(
                     temp_last_poly_ptr,
-                    coeff_count,
+                    degree,
                     key_modulus[j],
                     local_small_poly.get());
 
                 uint64_t half_mod = barrett_reduce_63(half, key_modulus[j]);
-                for (size_t l = 0; l < coeff_count; l++)
+                for (size_t l = 0; l < degree; l++)
                 {
                     local_small_poly.get()[l] = sub_uint_uint_mod(local_small_poly.get()[l],
                         half_mod,
@@ -2764,22 +2871,22 @@ namespace seal
                 sub_poly_poly_coeffmod(
                     temp_poly_ptr,
                     local_small_poly.get(),
-                    coeff_count,
+                    degree,
                     key_modulus[j],
                     temp_poly_ptr);
                 // qk^(-1) * ((ct mod qi) - (ct mod qk)) mod qi
                 multiply_poly_scalar_coeffmod(
                     temp_poly_ptr,
-                    coeff_count,
+                    degree,
                     modswitch_factors[j],
                     key_modulus[j],
                     temp_poly_ptr);
                 add_poly_poly_coeffmod(
                     temp_poly_ptr,
-                    encrypted_ptr + j * coeff_count,
-                    coeff_count,
+                    encrypted_ptr + j * degree,
+                    degree,
                     key_modulus[j],
-                    encrypted_ptr + j * coeff_count);
+                    encrypted_ptr + j * degree);
             }
         }
     }
