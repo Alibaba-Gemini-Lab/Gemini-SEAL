@@ -589,6 +589,14 @@ namespace seal
             rescale_to_next(encrypted, encrypted, std::move(pool));
         }
 
+        void rescale_by_bits(const Ciphertext &encrypted, Ciphertext &destination, int nbits,
+            MemoryPoolHandle pool = MemoryManager::GetPool());
+
+        inline void rescale_by_bits_inplace(Ciphertext &encrypted, int nbits,
+            MemoryPoolHandle pool = MemoryManager::GetPool())
+        {
+            rescale_by_bits(encrypted, encrypted, nbits, std::move(pool));
+        }
         /**
         Given a ciphertext encrypted modulo q_1...q_k, this function switches the
         modulus down until the parameters reach the given parms_id and scales the

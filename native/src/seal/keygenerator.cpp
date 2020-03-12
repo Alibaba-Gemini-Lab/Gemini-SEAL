@@ -461,42 +461,65 @@ namespace seal
             throw logic_error("keyswitching is not supported by the context");
         }
 
-        size_t coeff_count = context_->key_context_data()->parms().poly_modulus_degree();
-        size_t decomp_mod_count = context_->first_context_data()->parms().coeff_modulus().size();
         auto &key_context_data = *context_->key_context_data();
         auto &key_parms = key_context_data.parms();
         auto &key_modulus = key_parms.coeff_modulus();
+
+        size_t degree = key_parms.poly_modulus_degree();
+        size_t all_rns_count = key_modulus.size();
+        auto &ct_parms = context_->first_context_data()->parms();
+        auto &ct_modulus = ct_parms.coeff_modulus();
+        const size_t ct_rns_count = ct_parms.coeff_modulus().size();
+        const size_t n_special_primes = all_rns_count - ct_rns_count;
+
         shared_ptr<UniformRandomGenerator> random(key_parms.random_generator()->create());
 
         // Size check
-        if (!product_fits_in(coeff_count, decomp_mod_count))
+        if (!product_fits_in(degree, ct_rns_count))
         {
             throw logic_error("invalid parameters");
         }
 
         // KSwitchKeys data allocated from pool given by MemoryManager::GetPool.
-        destination.resize(decomp_mod_count);
+        size_t n_key_components = (ct_rns_count + n_special_primes - 1) / n_special_primes;
+        destination.resize(n_key_components);
 
-        auto temp(allocate_uint(coeff_count, pool_));
-        uint64_t factor = 0;
-        for (size_t j = 0; j < decomp_mod_count; j++)
-        {
-            encrypt_zero_symmetric(secret_key_, context_,
-                key_context_data.parms_id(), true, save_seed,
-                destination[j].data());
-            factor = key_modulus.back().value() % key_modulus[j].value();
-            multiply_poly_scalar_coeffmod(
-                new_key + j * coeff_count,
-                coeff_count,
-                factor,
-                key_modulus[j],
-                temp.get());
-            add_poly_poly_coeffmod(
-                destination[j].data().data() + j * coeff_count,
-                temp.get(),
-                coeff_count,
-                key_modulus[j],
-                destination[j].data().data() + j * coeff_count);
+        auto temp(allocate_uint(degree, pool_));
+        // key_i = encrypt_zero_symmetric + (factor_i * new_key, 0)
+        for (size_t j = 0; j < n_key_components; j++) {
+          encrypt_zero_symmetric(secret_key_, context_,
+                                 key_context_data.parms_id(), true, save_seed,
+                                 destination[j].data());
+
+          size_t ct_rns_index = j * n_special_primes;
+          const uint64_t *new_key_ptr = new_key + ct_rns_index * degree;
+          uint64_t *dst_0_ptr = destination[j].data().data(0) + ct_rns_index * degree;
+
+          for (size_t k = 0; k < n_special_primes; ++k) {
+            if (ct_rns_index >= ct_rns_count)
+              break;
+
+            uint64_t factor = 1UL;
+            for (size_t key_rns_index = ct_rns_count; key_rns_index < all_rns_count; ++key_rns_index) {
+              factor = multiply_uint_uint_mod(factor, key_modulus[key_rns_index].value(), ct_modulus[ct_rns_index]);
+            }
+
+            // Note: Here we apply Halvei's trick.
+            multiply_poly_scalar_coeffmod(new_key_ptr,
+                                          degree,
+                                          factor,
+                                          ct_modulus[ct_rns_index],
+                                          temp.get());
+
+            add_poly_poly_coeffmod(dst_0_ptr, 
+                                   temp.get(),
+                                   degree, 
+                                   ct_modulus[ct_rns_index],
+                                   dst_0_ptr);
+            new_key_ptr += degree;
+            dst_0_ptr += degree;
+            ++ct_rns_index;
+          }
         }
     }
 

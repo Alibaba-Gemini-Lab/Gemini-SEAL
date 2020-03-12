@@ -336,6 +336,25 @@ namespace seal
         return next_parms_id;
     }
 
+    SEALContext::SEALContext(EncryptionParameters parms, bool use_two_special_primes, bool expand_mod_chain, 
+                             sec_level_type sec_level, MemoryPoolHandle pool)
+      : SEALContext(parms, expand_mod_chain, sec_level, pool)
+    {
+      if (use_two_special_primes)
+      {
+          if (parms.coeff_modulus().size() <= 2)
+          {
+              throw std::logic_error("SEALContext: use_two_special_primes = true, but only got two moduli");
+          }
+
+          auto ptr = context_data_map_.at(first_parms_id_);
+          if (ptr)
+            first_parms_id_ = ptr->next_context_data_->parms().parms_id();
+          else
+            throw std::runtime_error("SEALContext: can not move first_parms_id");
+      }
+    }
+
     SEALContext::SEALContext(EncryptionParameters parms, bool expand_mod_chain,
         sec_level_type sec_level, MemoryPoolHandle pool)
         : pool_(move(pool)), sec_level_(sec_level)

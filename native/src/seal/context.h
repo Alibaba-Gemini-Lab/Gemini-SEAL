@@ -404,6 +404,21 @@ namespace seal
                 );
         }
 
+        SEAL_NODISCARD static auto Create2(
+            const EncryptionParameters &parms,
+            bool use_two_special_primes,
+            bool expand_mod_chain,
+            sec_level_type sec_level = sec_level_type::tc128)
+        {
+            return std::shared_ptr<SEALContext>(
+                new SEALContext(
+                    parms,
+                    use_two_special_primes,
+                    expand_mod_chain,
+                    sec_level,
+                    MemoryManager::GetPool())
+                );
+        }
         /**
         Returns the ContextData corresponding to encryption parameters with a given
         parms_id. If parameters with the given parms_id are not found then the
@@ -523,6 +538,9 @@ namespace seal
         */
         SEALContext(EncryptionParameters parms, bool expand_mod_chain,
             sec_level_type sec_level, MemoryPoolHandle pool);
+
+        SEALContext(EncryptionParameters parms, bool use_two_special_primes, bool expand_mod_chain,
+                    sec_level_type sec_level, MemoryPoolHandle pool);
 
         ContextData validate(EncryptionParameters parms);
 

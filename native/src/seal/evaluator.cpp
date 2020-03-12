@@ -2631,6 +2631,52 @@ namespace seal
         }
     }
 
+    struct FusedMultiplyAccumulator {
+      // acc += op0 * op1
+      inline void apply(unsigned long long*acc, uint64_t op0, uint64_t op1) const {
+        unsigned long long wide_product[2];
+        unsigned long long low_word;
+        unsigned char carry;
+
+        multiply_uint64(op0, op1, wide_product);
+        carry = add_uint64(acc[0], wide_product[0], &low_word);
+        acc[0] = low_word;
+        acc[1] += wide_product[1] + carry;
+      }
+    };
+
+    /**
+     * Faster cnst * (op0 - op1) mod p  for fixed constant cnst.
+     */
+    struct SubMulConstant {
+      explicit SubMulConstant(uint64_t cnst, seal::SmallModulus const &mod) : mod(mod), p(mod.value()), cnst(cnst) {
+        uint64_t cnst_128[2]{0, cnst};
+        uint64_t shoup[2];
+        seal::util::divide_uint128_uint64_inplace(cnst_128, p, shoup);
+        cnst_shoup = shoup[0]; // cnst_shoup = cnst * 2^64 / p
+      }
+      
+      // dst <- cnt * (op0 - op1)
+      void apply(const uint64_t *op0, const uint64_t *op1, uint64_t *dst, size_t degree) {
+        if (!op0 || !op1 || !dst || degree == 0)
+          return;
+
+        for (size_t l = 0; l < degree; ++l, ++op0, ++op1) {
+          uint64_t sub = *op0 - *op1 + p;
+          uint64_t hw64;
+          multiply_uint64_hw64(sub, cnst_shoup, &hw64);
+          uint64_t q = hw64 * p;
+          uint64_t t = (sub * cnst - q);
+          *dst++ = t - ((p & -static_cast<uint64_t>(t < p)) ^ p);
+        }
+      }
+
+      seal::SmallModulus const& mod;
+      uint64_t const p;
+      uint64_t const cnst;
+      uint64_t cnst_shoup;
+    };
+
     void Evaluator::switch_key_inplace(
         Ciphertext &encrypted,
         const uint64_t *target,
@@ -2638,256 +2684,186 @@ namespace seal
         size_t kswitch_keys_index,
         MemoryPoolHandle pool)
     {
-        auto parms_id = encrypted.parms_id();
-        auto &context_data = *context_->get_context_data(parms_id);
-        auto &parms = context_data.parms();
-        auto &key_context_data = *context_->key_context_data();
-        auto &key_parms = key_context_data.parms();
-        auto scheme = parms.scheme();
+      auto parms_id = encrypted.parms_id();
+      auto &context_data = *context_->get_context_data(parms_id);
+      auto &parms = context_data.parms();
+      auto &key_context_data = *context_->key_context_data();
+      auto &key_parms = key_context_data.parms();
+      auto &ct_modulus = parms.coeff_modulus();
+      auto &key_modulus = key_parms.coeff_modulus();
+      auto &small_ntt_tables = key_context_data.small_ntt_tables();
+      auto &modswitch_factors = key_context_data.base_converter()->get_inv_last_coeff_mod_array();
+      auto scheme = parms.scheme();
 
-        // Verify parameters.
-        if (!is_metadata_valid_for(encrypted, context_) || !is_buffer_valid(encrypted))
+      // Verify parameters.
+      if (!is_metadata_valid_for(encrypted, context_) || !is_buffer_valid(encrypted))
+      {
+        throw invalid_argument("encrypted is not valid for encryption parameters");
+      }
+      if (!target)
+      {
+        throw invalid_argument("target");
+      }
+      if (!context_->using_keyswitching())
+      {
+        throw logic_error("keyswitching is not supported by the context");
+      }
+
+      // Don't validate all of kswitch_keys but just check the parms_id.
+      if (kswitch_keys.parms_id() != context_->key_parms_id())
+      {
+        throw invalid_argument("parameter mismatch");
+      }
+
+      if (kswitch_keys_index >= kswitch_keys.data().size())
+      {
+        throw out_of_range("kswitch_keys_index");
+      }
+      if (!pool)
+      {
+        throw invalid_argument("pool is uninitialized");
+      }
+      if (scheme == scheme_type::BFV && encrypted.is_ntt_form())
+      {
+        throw invalid_argument("BFV encrypted cannot be in NTT form");
+      }
+      if (scheme == scheme_type::CKKS && !encrypted.is_ntt_form())
+      {
+        throw invalid_argument("CKKS encrypted must be in NTT form");
+      }
+
+      // Extract encryption parameters.
+      const size_t degree  = parms.poly_modulus_degree();
+      const size_t n_ct_rns = parms.coeff_modulus().size();
+      const size_t n_ct_all_rns = context_->get_context_data(context_->first_parms_id())->parms().coeff_modulus().size();
+      const size_t n_total_rns = key_modulus.size();
+      const size_t n_special_rns = n_total_rns - n_ct_all_rns;
+      if (n_special_rns != 1) throw std::logic_error("n_special_rns != 1 is not supported yet.");
+      const size_t n_bundles = (n_ct_rns + n_special_rns - 1) / n_special_rns;
+
+      // Size check
+      if (!product_fits_in(degree, n_ct_rns, size_t(2)))
+      {
+        throw logic_error("invalid parameters");
+      }
+
+      // Prepare input
+      auto &key_vector = kswitch_keys.data()[kswitch_keys_index];
+
+      // Check only the used component in KSwitchKeys.
+      for (auto &each_key : key_vector)
+      {
+        if (!is_metadata_valid_for(each_key, context_) ||
+            !is_buffer_valid(each_key))
         {
-            throw invalid_argument("encrypted is not valid for encryption parameters");
+          throw invalid_argument(
+                                 "kswitch_keys is not valid for encryption parameters");
         }
-        if (!target)
-        {
-            throw invalid_argument("target");
-        }
-        if (!context_->using_keyswitching())
-        {
-            throw logic_error("keyswitching is not supported by the context");
-        }
+      }
 
-        // Don't validate all of kswitch_keys but just check the parms_id.
-        if (kswitch_keys.parms_id() != context_->key_parms_id())
-        {
-            throw invalid_argument("parameter mismatch");
+      // (target * key[0], target * key[1])
+      Pointer<uint64_t> target_mul_key[2] {
+        allocate_poly(degree, n_ct_rns + n_special_rns, pool),
+        allocate_poly(degree, n_ct_rns + n_special_rns, pool)
+      };
+
+      // Convert target to power-basis form
+      Pointer<uint64_t> target_power_basis;
+      const uint64_t *target_power_basis_ptr;
+      if (scheme == scheme_type::CKKS) {
+        target_power_basis = allocate_poly(degree, n_ct_rns, pool);
+        target_power_basis_ptr = target_power_basis.get();
+        for (size_t i = 0; i < n_ct_rns; ++i) {
+          set_uint_uint(target + i * degree, degree, target_power_basis.get() + i * degree);
+          inverse_ntt_negacyclic_harvey(target_power_basis.get() + i * degree, small_ntt_tables[i]);
         }
+      } else {
+        // For BFV, target is already in power-basis form.
+        target_power_basis_ptr = target;
+      }
 
-        if (kswitch_keys_index >= kswitch_keys.data().size())
-        {
-            throw out_of_range("kswitch_keys_index");
-        }
-        if (!pool)
-        {
-            throw invalid_argument("pool is uninitialized");
-        }
-        if (scheme == scheme_type::BFV && encrypted.is_ntt_form())
-        {
-            throw invalid_argument("BFV encrypted cannot be in NTT form");
-        }
-        if (scheme == scheme_type::CKKS && !encrypted.is_ntt_form())
-        {
-            throw invalid_argument("CKKS encrypted must be in NTT form");
-        }
+      Pointer<uint64_t> lazy_mult[2] { allocate_uint(2 * degree, pool), allocate_uint(2 * degree, pool) };
+      Pointer<uint64_t> temp_poly{allocate_uint(degree, pool)}; 
 
-        // Extract encryption parameters.
-        size_t degree  = parms.poly_modulus_degree();
-
-        auto &ct_modulus = parms.coeff_modulus();
-        size_t ct_mod_count = parms.coeff_modulus().size();
-
-        auto &key_modulus = key_parms.coeff_modulus();
-        size_t all_rns_count = key_modulus.size();
-        size_t n_special_primes = all_rns_count - context_->get_context_data(context_->first_parms_id())->parms().coeff_modulus().size();
-        // size_t rns_mod_count = decomp_mod_count + 1;
-
-        auto &small_ntt_tables = key_context_data.small_ntt_tables();
-        auto &modswitch_factors = key_context_data.base_converter()->
-            get_inv_last_coeff_mod_array();
-
-        // Size check
-        if (!product_fits_in(degree, ct_mod_count, size_t(2)))
-        {
-            throw logic_error("invalid parameters");
+      // Key RNS representation
+      for (size_t j = 0; j < n_ct_rns + n_special_rns; j++) {
+        const size_t key_rns_idx = j < n_ct_rns ? j : n_ct_all_rns + j - n_ct_rns;
+        for (int b : {0, 1}) {
+          std::memset(lazy_mult[b].get(), 0, sizeof(uint64_t) * 2 * degree);
         }
 
-        // Prepare input
-        auto &key_vector = kswitch_keys.data()[kswitch_keys_index];
+        for (size_t ct_rns_idx = 0; ct_rns_idx < n_ct_rns; ct_rns_idx++) {
+          // For each RNS decomposition, multiply with key data and sum up.
+          const uint64_t *ct_ptr = nullptr;
 
-        // Check only the used component in KSwitchKeys.
-        for (auto &each_key : key_vector)
-        {
-            if (!is_metadata_valid_for(each_key, context_) ||
-                !is_buffer_valid(each_key))
-            {
-                throw invalid_argument(
-                    "kswitch_keys is not valid for encryption parameters");
+          if (scheme == scheme_type::CKKS && ct_rns_idx == j) {
+            ct_ptr = target + ct_rns_idx * degree;
+          } else {
+            // Reduce modulus only if needed
+            if (ct_modulus[ct_rns_idx].value() <= key_modulus[key_rns_idx].value()) {
+              set_uint_uint(target_power_basis_ptr + ct_rns_idx * degree, degree, temp_poly.get());
+            } else {
+              modulo_poly_coeffs_63(target_power_basis_ptr + ct_rns_idx * degree, degree, key_modulus[key_rns_idx], 
+                                    temp_poly.get());
             }
+            // Lazy reduction, output in [0, 4q).
+            ntt_negacyclic_harvey_lazy(temp_poly.get(), small_ntt_tables[key_rns_idx]); 
+            ct_ptr = temp_poly.get();
+          }
+
+          // Two components in key
+          for (int b : {0, 1}) {
+            const uint64_t *key_ptr = key_vector[ct_rns_idx].data().data(b) + key_rns_idx * degree;
+            auto lazy_mult_ptr = static_cast<unsigned long long*>(lazy_mult[b].get());
+            FusedMultiplyAccumulator fma;
+            for (size_t l = 0; l < degree; l++, lazy_mult_ptr += 2) {
+              fma.apply(lazy_mult_ptr, *key_ptr++, ct_ptr[l]);
+            }
+          }
+        } // ct_rns_idx loops
+
+        // lazy reduction
+        for (int b : {0, 1}) {
+          auto lazy_mult_ptr = static_cast<const unsigned long long*>(lazy_mult[b].get());
+          uint64_t *dst_ptr = target_mul_key[b].get() + j * degree;
+          for (size_t l = 0; l < degree; l++, lazy_mult_ptr += 2) {
+            *dst_ptr++ = barrett_reduce_128(lazy_mult_ptr, key_modulus[key_rns_idx]);
+          }
+
+          // Convert the special primes part to power-basis, because we need to perform rescaling.
+          if (j >= n_ct_rns) {
+            inverse_ntt_negacyclic_harvey_lazy(target_mul_key[b].get() + j * degree, small_ntt_tables[key_rns_idx]);
+          }
         }
+      } // key_rns_idx loop
 
-        // Temporary results
-        Pointer<uint64_t> temp_poly[2] {
-            allocate_zero_poly(2 * degree, ct_mod_count + n_special_primes, pool),
-            allocate_zero_poly(2 * degree, ct_mod_count + n_special_primes, pool)
-        };
+      // Rescale out the special primes part, then add to encrypted
+      //     (target * key[0], target * key[1]) * encrypted
+      for (int b : {0, 1}) {
+        uint64_t *last_rns_ptr = target_mul_key[b].get() + n_ct_rns * degree;
+        uint64_t *encrypted_ptr = encrypted.data(b);
 
-        for (size_t i = 0; i < ct_mod_count; i++)
-        {
-            // For each RNS decomposition, multiply with key data and sum up.
-            auto local_small_poly_0(allocate_uint(degree, pool));
-            auto local_small_poly_1(allocate_uint(degree, pool));
-            auto local_small_poly_2(allocate_uint(degree, pool));
+        for (size_t j = 0; j < n_ct_rns; j++, encrypted_ptr += degree) {
+          uint64_t *tr_key_ptr = target_mul_key[b].get() + j * degree;
+          // (ct mod 4qk) mod qi in the power-basis
+          modulo_poly_coeffs_63(last_rns_ptr, degree, ct_modulus[j], temp_poly.get());
 
-            const uint64_t *local_encrypted_ptr = nullptr;
-            set_uint_uint(
-                target + i * degree,
-                degree,
-                local_small_poly_0.get());
-            if (scheme == scheme_type::CKKS)
-            {
-                inverse_ntt_negacyclic_harvey(
-                    local_small_poly_0.get(),
-                    small_ntt_tables[i]);
-            }
-            // Key RNS representation
-            for (size_t j = 0; j < ct_mod_count + n_special_primes; j++)
-            {
-                size_t index = (j == ct_mod_count ? all_rns_count - (ct_mod_count + n_special_primes - j) : j);
-                if (scheme == scheme_type::CKKS && i == j)
-                {
-                    local_encrypted_ptr = target + j * degree;
-                }
-                else
-                {
-                    // Reduce modulus only if needed
-                    if (key_modulus[i].value() <= key_modulus[index].value())
-                    {
-                        set_uint_uint(
-                            local_small_poly_0.get(),
-                            degree,
-                            local_small_poly_1.get());
-                    }
-                    else
-                    {
-                        modulo_poly_coeffs_63(
-                            local_small_poly_0.get(),
-                            degree,
-                            key_modulus[index],
-                            local_small_poly_1.get());
-                    }
+          if (scheme == scheme_type::CKKS) {
+            ntt_negacyclic_harvey(temp_poly.get(), small_ntt_tables[j]);
+          } else if (scheme == scheme_type::BFV) {
+            inverse_ntt_negacyclic_harvey(tr_key_ptr, small_ntt_tables[j]);
+          }
 
-                    // Lazy reduction, output in [0, 4q).
-                    ntt_negacyclic_harvey_lazy(
-                        local_small_poly_1.get(),
-                        small_ntt_tables[index]);
-                    local_encrypted_ptr = local_small_poly_1.get();
-                }
-                // Two components in key
-                for (size_t k = 0; k < 2; k++)
-                {
-                    const uint64_t *key_ptr = key_vector[i].data().data(k);
-                    for (size_t l = 0; l < degree; l++)
-                    {
-                        unsigned long long local_wide_product[2];
-                        unsigned long long local_low_word;
-                        unsigned char local_carry;
+          // Rescale qk
+          //  ((ct mod qi) - (ct mod qk)) mod qi
+          //  qk^(-1) * ((ct mod qi) - (ct mod qk)) mod qi
+          SubMulConstant submul(modswitch_factors[j], ct_modulus[j]);
+          submul.apply(tr_key_ptr, temp_poly.get(), temp_poly.get(), degree);
 
-                        multiply_uint64(
-                            local_encrypted_ptr[l],
-                            key_ptr[(index * degree) + l],
-                            local_wide_product);
-                        local_carry = add_uint64(
-                            temp_poly[k].get()[(j * degree+ l) * 2],
-                            local_wide_product[0],
-                            &local_low_word);
-                        temp_poly[k].get()[(j * degree + l) * 2] =
-                            local_low_word;
-                        temp_poly[k].get()[(j * degree + l) * 2 + 1] +=
-                            local_wide_product[1] + local_carry;
-                    }
-                }
-            }
+          // add to the encrypted ciphertext
+          add_poly_poly_coeffmod(temp_poly.get(), encrypted_ptr, 
+                                 degree, ct_modulus[j], encrypted_ptr);
         }
-
-        // Results are now stored in temp_poly[k]
-        // Modulus switching should be performed
-        auto local_small_poly(allocate_uint(degree, pool));
-        for (size_t k = 0; k < 2; k++)
-        {
-            // Reduce (ct mod 4qk) mod qk
-            uint64_t *temp_poly_ptr = temp_poly[k].get() +
-                ct_mod_count * degree * 2;
-            for (size_t l = 0; l < degree; l++)
-            {
-                temp_poly_ptr[l] = barrett_reduce_128(
-                    temp_poly_ptr + l * 2,
-                    key_modulus[all_rns_count - 1]);
-            }
-            // Lazy reduction, they are then reduced mod qi
-            uint64_t *temp_last_poly_ptr = temp_poly[k].get() + ct_mod_count * degree * 2;
-            inverse_ntt_negacyclic_harvey_lazy(
-                temp_last_poly_ptr,
-                small_ntt_tables[all_rns_count - 1]);
-
-            // Add (p-1)/2 to change from flooring to rounding.
-            uint64_t half = key_modulus[all_rns_count - 1].value() >> 1;
-            for (size_t l = 0; l < degree; l++)
-            {
-                temp_last_poly_ptr[l] = barrett_reduce_63(temp_last_poly_ptr[l] + half,
-                    key_modulus[all_rns_count - 1]);
-            }
-
-            uint64_t *encrypted_ptr = encrypted.data(k);
-            for (size_t j = 0; j < ct_mod_count; j++)
-            {
-                temp_poly_ptr = temp_poly[k].get() + j * degree * 2;
-                // (ct mod 4qi) mod qi
-                for (size_t l = 0; l < degree; l++)
-                {
-                    temp_poly_ptr[l] = barrett_reduce_128(
-                        temp_poly_ptr + l * 2,
-                        key_modulus[j]);
-                }
-                // (ct mod 4qk) mod qi
-                modulo_poly_coeffs_63(
-                    temp_last_poly_ptr,
-                    degree,
-                    key_modulus[j],
-                    local_small_poly.get());
-
-                uint64_t half_mod = barrett_reduce_63(half, key_modulus[j]);
-                for (size_t l = 0; l < degree; l++)
-                {
-                    local_small_poly.get()[l] = sub_uint_uint_mod(local_small_poly.get()[l],
-                        half_mod,
-                        key_modulus[j]);
-                }
-
-                if (scheme == scheme_type::CKKS)
-                {
-                    ntt_negacyclic_harvey(
-                        local_small_poly.get(),
-                        small_ntt_tables[j]);
-                }
-                else if (scheme == scheme_type::BFV)
-                {
-                    inverse_ntt_negacyclic_harvey(
-                        temp_poly_ptr,
-                        small_ntt_tables[j]);
-                }
-                // ((ct mod qi) - (ct mod qk)) mod qi
-                sub_poly_poly_coeffmod(
-                    temp_poly_ptr,
-                    local_small_poly.get(),
-                    degree,
-                    key_modulus[j],
-                    temp_poly_ptr);
-                // qk^(-1) * ((ct mod qi) - (ct mod qk)) mod qi
-                multiply_poly_scalar_coeffmod(
-                    temp_poly_ptr,
-                    degree,
-                    modswitch_factors[j],
-                    key_modulus[j],
-                    temp_poly_ptr);
-                add_poly_poly_coeffmod(
-                    temp_poly_ptr,
-                    encrypted_ptr + j * degree,
-                    degree,
-                    key_modulus[j],
-                    encrypted_ptr + j * degree);
-            }
-        }
+      }
     }
 }
