@@ -466,59 +466,55 @@ namespace seal
         auto &key_modulus = key_parms.coeff_modulus();
 
         size_t degree = key_parms.poly_modulus_degree();
-        size_t all_rns_count = key_modulus.size();
+        size_t n_all_rns = key_modulus.size();
         auto &ct_parms = context_->first_context_data()->parms();
         auto &ct_modulus = ct_parms.coeff_modulus();
-        const size_t ct_rns_count = ct_parms.coeff_modulus().size();
-        const size_t n_special_primes = all_rns_count - ct_rns_count;
+        const size_t n_all_ct_rns = ct_parms.coeff_modulus().size();
+        const size_t n_special_rns = n_all_rns - n_all_ct_rns;
 
         shared_ptr<UniformRandomGenerator> random(key_parms.random_generator()->create());
 
         // Size check
-        if (!product_fits_in(degree, ct_rns_count))
+        if (!product_fits_in(degree, n_all_ct_rns))
         {
             throw logic_error("invalid parameters");
         }
 
         // KSwitchKeys data allocated from pool given by MemoryManager::GetPool.
-        size_t n_key_components = (ct_rns_count + n_special_primes - 1) / n_special_primes;
+        size_t n_key_components = (n_all_ct_rns + n_special_rns - 1) / n_special_rns;
         destination.resize(n_key_components);
 
         auto temp(allocate_uint(degree, pool_));
-        // key_i = encrypt_zero_symmetric + (factor_i * new_key, 0)
         for (size_t j = 0; j < n_key_components; j++) {
+
           encrypt_zero_symmetric(secret_key_, context_,
                                  key_context_data.parms_id(), true, save_seed,
                                  destination[j].data());
 
-          size_t ct_rns_index = j * n_special_primes;
-          const uint64_t *new_key_ptr = new_key + ct_rns_index * degree;
-          uint64_t *dst_0_ptr = destination[j].data().data(0) + ct_rns_index * degree;
+          size_t rns0 = j * n_special_rns;
+          size_t rns1 = std::min(rns0 + n_special_rns, n_all_ct_rns);
+          for (size_t i = rns0; i < rns1; ++i) {
 
-          for (size_t k = 0; k < n_special_primes; ++k) {
-            if (ct_rns_index >= ct_rns_count)
-              break;
+            const uint64_t *new_key_ptr = new_key + i * degree;
+            uint64_t *dst_0_ptr = destination[j].data().data(0) + i * degree;
 
-            uint64_t factor = 1UL;
-            for (size_t key_rns_index = ct_rns_count; key_rns_index < all_rns_count; ++key_rns_index) {
-              factor = multiply_uint_uint_mod(factor, key_modulus[key_rns_index].value(), ct_modulus[ct_rns_index]);
+            uint64_t prod_spcl_rns{1};  // product of all special rns over mod qi.
+            for (size_t k = n_all_ct_rns; k < n_all_rns; ++k) {
+              prod_spcl_rns = multiply_uint_uint_mod(prod_spcl_rns, key_modulus[k].value(), ct_modulus[i]);
             }
 
             // Note: Here we apply Halvei's trick.
             multiply_poly_scalar_coeffmod(new_key_ptr,
                                           degree,
-                                          factor,
-                                          ct_modulus[ct_rns_index],
+                                          prod_spcl_rns,
+                                          ct_modulus[i],
                                           temp.get());
 
             add_poly_poly_coeffmod(dst_0_ptr, 
                                    temp.get(),
                                    degree, 
-                                   ct_modulus[ct_rns_index],
+                                   ct_modulus[i],
                                    dst_0_ptr);
-            new_key_ptr += degree;
-            dst_0_ptr += degree;
-            ++ct_rns_index;
           }
         }
     }
