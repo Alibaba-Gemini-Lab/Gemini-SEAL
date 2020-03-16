@@ -500,7 +500,9 @@ namespace seal
 
             uint64_t prod_spcl_rns{1};  // product of all special rns over mod qi.
             for (size_t k = n_all_ct_rns; k < n_all_rns; ++k) {
-              prod_spcl_rns = multiply_uint_uint_mod(prod_spcl_rns, key_modulus[k].value(), ct_modulus[i]);
+              prod_spcl_rns = multiply_uint_uint_mod(prod_spcl_rns, 
+                                                     key_modulus[k].value(), 
+                                                     ct_modulus[i]);
             }
 
             // Note: Here we apply Halvei's trick.
