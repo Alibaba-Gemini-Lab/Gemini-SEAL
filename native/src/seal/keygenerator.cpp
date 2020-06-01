@@ -20,7 +20,7 @@ using namespace seal::util;
 
 namespace seal
 {
-    KeyGenerator::KeyGenerator(shared_ptr<SEALContext> context) : context_(move(context))
+    KeyGenerator::KeyGenerator(shared_ptr<SEALContext> context, int hwt) : context_(move(context))
     {
         // Verify parameters
         if (!context_)
@@ -36,7 +36,7 @@ namespace seal
         sk_generated_ = false;
 
         // Generate the secret and public key
-        generate_sk();
+        generate_sk(hwt);
     }
 
     KeyGenerator::KeyGenerator(shared_ptr<SEALContext> context, const SecretKey &secret_key) : context_(move(context))
@@ -60,10 +60,10 @@ namespace seal
         sk_generated_ = true;
 
         // Generate the public key
-        generate_sk(sk_generated_);
+        generate_sk(0, sk_generated_);
     }
 
-    void KeyGenerator::generate_sk(bool is_initialized)
+    void KeyGenerator::generate_sk(int hwt, bool is_initialized)
     {
         // Extract encryption parameters.
         auto &context_data = *context_->key_context_data();
@@ -83,7 +83,13 @@ namespace seal
 
             // Generate secret key
             RNSIter secret_key(secret_key_.data().data(), coeff_count);
-            sample_poly_ternary(random, parms, secret_key);
+            if (hwt > 0 && hwt < coeff_count) 
+            {
+                sample_poly_hamming(random, hwt, parms, secret_key);
+            } else
+            {
+                sample_poly_ternary(random, parms, secret_key);
+            }
 
             // Transform the secret s into NTT representation.
             auto ntt_tables = context_data.small_ntt_tables();

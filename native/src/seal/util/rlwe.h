@@ -25,6 +25,9 @@ namespace seal
         void sample_poly_ternary(
             std::shared_ptr<UniformRandomGenerator> rng, const EncryptionParameters &parms, std::uint64_t *destination);
 
+        void sample_poly_hamming(
+            std::shared_ptr<UniformRandomGenerator> rng, int hwt, const EncryptionParameters &parms, std::uint64_t *destination);
+
         /**
         Generate a polynomial from a normal distribution and store in RNS representation.
 

@@ -132,8 +132,11 @@ namespace seal
 // Use `if constexpr' from C++17
 #ifdef SEAL_USE_IF_CONSTEXPR
 #define SEAL_IF_CONSTEXPR if constexpr
+using void_t = std::void_t;
 #else
 #define SEAL_IF_CONSTEXPR if
+template<typename... Ts> struct make_void { typedef void type;};
+template<typename... Ts> using void_t = typename make_void<Ts...>::type;
 #endif
 
 // Use [[maybe_unused]] from C++17

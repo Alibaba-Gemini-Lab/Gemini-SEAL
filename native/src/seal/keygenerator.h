@@ -40,7 +40,7 @@ namespace seal
         @throws std::invalid_argument if the context is not set or encryption
         parameters are not valid
         */
-        KeyGenerator(std::shared_ptr<SEALContext> context);
+        KeyGenerator(std::shared_ptr<SEALContext> context, int hwt = 0);
 
         /**
         Creates an KeyGenerator instance initialized with the specified SEALContext
@@ -270,7 +270,7 @@ namespace seal
         initialized so that only the secret_key_array_ should be initialized, for
         example, if the secret key was provided in the constructor
         */
-        void generate_sk(bool is_initialized = false);
+        void generate_sk(int hwt, bool is_initialized = false);
 
         /**
         Generates new public key matching to existing secret key.
