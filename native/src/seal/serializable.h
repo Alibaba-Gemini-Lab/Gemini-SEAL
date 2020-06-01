@@ -144,6 +144,8 @@ namespace seal
             return obj_.save(out, size, compr_mode);
         }
 
+        const T& object() const { return obj_; }
+
     private:
         Serializable(T &&obj) : obj_(std::move(obj))
         {}

@@ -17,6 +17,8 @@
 using namespace std;
 using namespace seal::util;
 
+#include "multi_special_primes.cpp"
+
 namespace seal
 {
     namespace
@@ -1997,6 +1999,7 @@ namespace seal
         }
     }
 
+#if 0
     void Evaluator::switch_key_inplace(
         Ciphertext &encrypted, ConstRNSIter target_iter, const KSwitchKeys &kswitch_keys, size_t kswitch_keys_index,
         MemoryPoolHandle pool)
@@ -2252,4 +2255,116 @@ namespace seal
             });
         });
     }
+#else
+   void Evaluator::switch_key_inplace(Ciphertext &encrypted, ConstRNSIter target_iter, const KSwitchKeys &kswitch_keys, size_t kswitch_keys_index, MemoryPoolHandle pool)
+    {
+        auto parms_id = encrypted.parms_id();
+        auto &context_data = *context_->get_context_data(parms_id);
+        auto &parms = context_data.parms();
+        auto &key_context_data = *context_->key_context_data();
+        auto &key_parms = key_context_data.parms();
+        auto &key_modulus = key_parms.coeff_modulus();
+        auto small_ntt_tables = key_context_data.small_ntt_tables();
+        auto scheme = parms.scheme();
+
+        // Verify parameters.
+        const size_t degree  = parms.poly_modulus_degree();
+        const size_t n_ct_rns = parms.coeff_modulus().size();
+        const size_t n_ct_all_rns = context_->get_context_data(context_->first_parms_id())->parms().coeff_modulus().size();
+        const size_t n_total_rns = key_modulus.size();
+        const size_t n_special_rns = n_total_rns - n_ct_all_rns;
+        const size_t n_bundles = (n_ct_rns + n_special_rns - 1) / n_special_rns;
+        const bool is_ckks = scheme == scheme_type::CKKS;
+
+        // Prepare input
+        auto &key_vector = kswitch_keys.data()[kswitch_keys_index];
+
+        // Check only the used component in KSwitchKeys.
+        for (auto &each_key : key_vector)
+        {
+            if (!is_metadata_valid_for(each_key, context_) ||
+                !is_buffer_valid(each_key))
+            {
+                throw invalid_argument("kswitch_keys is not valid for encryption parameters");
+            }
+        }
+
+        Pointer<uint64_t> lazy_mult[2] { allocate_zero_poly(degree, 2 * (n_ct_rns + n_special_rns), pool),
+            allocate_zero_poly(degree, 2 * (n_ct_rns + n_special_rns), pool) };
+
+        Pointer<uint64_t> poly_ext_rns { allocate_poly(degree, n_ct_rns + n_special_rns, pool) };
+
+        for (size_t src_bundle_idx = 0; src_bundle_idx < n_bundles; ++src_bundle_idx) {
+            // Step 1: convert the current bundle to power-basis
+            const size_t rns0 = src_bundle_idx * n_special_rns;
+            const size_t rns1 = std::min(rns0 + n_special_rns, n_ct_rns);
+
+            RNSIter dst_iter(poly_ext_rns.get(), degree);
+            SEAL_ITERATE(iter(dst_iter + rns0, target_iter + rns0, small_ntt_tables + rns0), rns1 - rns0,
+                         [degree, is_ckks](auto I) {
+                             set_uint(get<1>(I), degree, get<0>(I));
+                             if (is_ckks) inverse_ntt_negacyclic_harvey(get<0>(I), *get<2>(I));
+                         });
+
+            // Step 2: modulus up, including all normal primes and special primes.
+            modup_rns(poly_ext_rns.get() + rns0 * degree, poly_ext_rns.get(),
+                      degree, n_ct_rns, n_special_rns, src_bundle_idx, key_modulus, pool);
+
+            // Step 3: Inner Product using lazy reduction.
+            // Note, the number of rns should be less than 256 to prevent 128bit overflow.
+            for (size_t k = 0; k < n_ct_rns + n_special_rns; ++k) {
+                bool is_spcl_rns = k >= n_ct_rns;
+                size_t rns_idx = is_spcl_rns ? n_ct_all_rns + k - n_ct_rns : k;
+                const uint64_t *ct_ptr = nullptr;
+                if (k >= rns0 && k < rns1) {
+                    ct_ptr = **(target_iter + k);
+                } else {
+                    ntt_negacyclic_harvey_lazy(poly_ext_rns.get() + k * degree, small_ntt_tables[rns_idx]);
+                    ct_ptr = poly_ext_rns.get() + k * degree;
+                }
+
+                for (size_t l : {0, 1}) {
+                    const uint64_t *key_ptr = key_vector[src_bundle_idx].data().data(l) + rns_idx * degree;
+                    auto lazy_mult_ptr = lazy_mult[l].get() + k * (degree << 1);
+                    FMAU128 fma;
+                    auto _ct_ptr = ct_ptr;
+                    for (size_t d = 0; d < degree; ++d, lazy_mult_ptr += 2) {
+                        fma.apply(lazy_mult_ptr, *_ct_ptr++, *key_ptr++);
+                    }
+                }
+            } // k-loop
+        } // j-loop
+
+        for (size_t b : {0, 1}) {
+            // Step 4: Lazy reduction
+            uint64_t *cmult_evk_ptr = poly_ext_rns.get();
+            for (size_t k = 0; k < n_ct_rns + n_special_rns; ++k) {
+                bool is_spcl_rns = k >= n_ct_rns;
+                size_t rns_idx   = is_spcl_rns? n_ct_all_rns + k - n_ct_rns : k;
+
+                auto lazy_mult_ptr = lazy_mult[b].get() + k * (degree << 1);
+                uint64_t *dst_ptr = cmult_evk_ptr;
+                for (size_t l = 0; l < degree; l++, lazy_mult_ptr += 2) {
+                    *dst_ptr++ = barrett_reduce_128(lazy_mult_ptr, key_modulus[rns_idx]);
+                }
+
+                if (is_spcl_rns) {
+                    // Backward to power-basis for mod-down. Note that, we only convert the special prime part.
+                    // The following bext.mod_down() operation will take care of the normal part.
+                    inverse_ntt_negacyclic_harvey_lazy(cmult_evk_ptr, small_ntt_tables[rns_idx]);
+                }
+                cmult_evk_ptr += degree;
+            }
+
+            cmult_evk_ptr = poly_ext_rns.get();
+            // Step 5: Rescale Down then Add
+            rescale_special_rns_inplace(cmult_evk_ptr, is_ckks, degree, n_ct_rns, n_special_rns, key_modulus, small_ntt_tables, pool);
+
+            uint64_t *encrypted_ptr = encrypted.data(b);
+            for (size_t i = 0; i < n_ct_rns; i++, encrypted_ptr += degree, cmult_evk_ptr += degree) {
+                add_poly_coeffmod(cmult_evk_ptr, encrypted_ptr, degree, key_modulus[i], encrypted_ptr);
+            }
+        }
+	}
+#endif
 } // namespace seal

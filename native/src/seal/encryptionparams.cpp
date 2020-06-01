@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT license.
-
+// Licensed under the MIT license
 #include "seal/encryptionparams.h"
 #include "seal/util/uintcore.h"
 #include <limits>
@@ -23,9 +22,11 @@ namespace seal
             uint64_t poly_modulus_degree64 = static_cast<uint64_t>(poly_modulus_degree_);
             uint64_t coeff_modulus_size64 = static_cast<uint64_t>(coeff_modulus_.size());
             uint8_t scheme = static_cast<uint8_t>(scheme_);
+            uint64_t n_special_primes64 = static_cast<uint64_t>(n_special_primes_);
 
             stream.write(reinterpret_cast<const char *>(&scheme), sizeof(uint8_t));
             stream.write(reinterpret_cast<const char *>(&poly_modulus_degree64), sizeof(uint64_t));
+            stream.write(reinterpret_cast<const char*>(&n_special_primes64), sizeof(uint64_t));
             stream.write(reinterpret_cast<const char *>(&coeff_modulus_size64), sizeof(uint64_t));
             for (const auto &mod : coeff_modulus_)
             {
@@ -73,6 +74,13 @@ namespace seal
                 throw logic_error("poly_modulus_degree is invalid");
             }
 
+            uint64_t n_special_primes64 = 0;
+            stream.read(reinterpret_cast<char*>(&n_special_primes64), sizeof(uint64_t));
+            if (n_special_primes64 < 1)
+            {
+                throw logic_error("EncryptionParameters: n_special_primes is invalid");
+            }
+
             // Read the coeff_modulus size
             uint64_t coeff_modulus_size64 = 0;
             stream.read(reinterpret_cast<char *>(&coeff_modulus_size64), sizeof(uint64_t));
@@ -97,6 +105,7 @@ namespace seal
 
             // Supposedly everything worked so set the values of member variables
             parms.set_poly_modulus_degree(safe_cast<size_t>(poly_modulus_degree64));
+            parms.set_n_special_primes(safe_cast<size_t>(n_special_primes64));
             parms.set_coeff_modulus(coeff_modulus);
 
             // Only BFV uses plain_modulus; set_plain_modulus checks that for

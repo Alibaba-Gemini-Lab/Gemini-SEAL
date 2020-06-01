@@ -37,7 +37,7 @@ static_assert(sizeof(unsigned long long) == 8, "Require sizeof(unsigned long lon
 #define SEAL_INTERNAL_MOD_BIT_COUNT 61
 
 // Bounds for bit-length of user-defined coefficient moduli
-#define SEAL_USER_MOD_BIT_COUNT_MAX 60
+#define SEAL_USER_MOD_BIT_COUNT_MAX 59
 #define SEAL_USER_MOD_BIT_COUNT_MIN 2
 
 // Bounds for bit-length of the plaintext modulus
@@ -48,8 +48,9 @@ static_assert(sizeof(unsigned long long) == 8, "Require sizeof(unsigned long lon
 #define SEAL_COEFF_MOD_COUNT_MAX 64
 #define SEAL_COEFF_MOD_COUNT_MIN 1
 
-// Bounds for polynomial modulus degree (no hard requirement)
-#define SEAL_POLY_MOD_DEGREE_MAX 131072
+// Bounds for polynomial modulus degree (hard requirement)
+// (2 * (log2(N/2) + 1) * p <= 2^64, |p| <= 2^59, N <= 2^16
+#define SEAL_POLY_MOD_DEGREE_MAX 65536
 #define SEAL_POLY_MOD_DEGREE_MIN 2
 
 // Upper bound on the size of a ciphertext (no hard requirement)

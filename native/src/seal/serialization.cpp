@@ -243,7 +243,11 @@ namespace seal
             stream.exceptions(ios_base::badbit | ios_base::failbit);
 
             // Save the starting position
+#ifdef SEAL_CHECK_HEADER
             auto stream_start_pos = stream.tellp();
+#else
+            util::ArrayGetBuffer::pos_type stream_start_pos = 0;
+#endif
 
             // Create the header
             SEALHeader header;
@@ -291,7 +295,11 @@ namespace seal
             }
 
             // Compute how many bytes were written
+#ifdef SEAL_CHECK_HEADER
             auto stream_end_pos = stream.tellp();
+#else
+            util::ArrayGetBuffer::pos_type stream_end_pos = 0;
+#endif
             out_size = stream_end_pos - stream_start_pos;
         }
         catch (const ios_base::failure &)
@@ -326,7 +334,11 @@ namespace seal
             stream.exceptions(ios_base::badbit | ios_base::failbit);
 
             // Save the starting position
+#ifdef SEAL_CHECK_HEADER
             auto stream_start_pos = stream.tellg();
+#else
+            util::ArrayGetBuffer::pos_type stream_start_pos = 0;
+#endif
 
             // First read the header
             LoadHeader(stream, header);
@@ -344,10 +356,12 @@ namespace seal
             case compr_mode_type::none:
                 // Read rest of the data
                 load_members(stream);
+#ifdef SEAL_CHECK_HEADER
                 if (header.size != safe_cast<uint64_t>(stream.tellg() - stream_start_pos))
                 {
                     throw logic_error("invalid data size");
                 }
+#endif
                 break;
 #ifdef SEAL_USE_ZLIB
             case compr_mode_type::deflate:

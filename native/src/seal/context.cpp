@@ -520,5 +520,22 @@ namespace seal
             const_pointer_cast<ContextData>(context_data_ptr)->chain_index_ = --parms_count;
             context_data_ptr = context_data_ptr->next_context_data_;
         }
+
+        const size_t nsp = parms.n_special_primes();
+        if (nsp > 1)
+        {
+            if (parms.coeff_modulus().size() <= nsp)
+            {
+                throw std::logic_error("SEALContext: Error #moduli <= n_special_primes.");
+            }
+        
+            for (size_t i = 1; i < nsp; ++i)
+            {
+                auto ptr = context_data_map_.at(first_parms_id_);
+                if (!ptr)
+                    throw std::runtime_error("SEALContext: can not move first_parms_id");
+                first_parms_id_ = ptr->next_context_data_->parms().parms_id();
+            }
+        }
     }
 } // namespace seal

@@ -132,9 +132,10 @@ void example_rotation_ckks()
 
     size_t poly_modulus_degree = 8192;
     parms.set_poly_modulus_degree(poly_modulus_degree);
-    parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 40, 40, 40, 40, 40 }));
+    parms.set_n_special_primes(1);
+    parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 40, 40, 40, 40, 50, 50, }));
 
-    auto context = SEALContext::Create(parms);
+    auto context = SEALContext::Create(parms, true, sec_level_type::none);
     print_parameters(context);
     cout << endl;
 

@@ -331,31 +331,41 @@ namespace seal
         }
 
         size_t coeff_count = context_->key_context_data()->parms().poly_modulus_degree();
-        size_t decomp_mod_count = context_->first_context_data()->parms().coeff_modulus().size();
+        size_t n_ct_rns = context_->first_context_data()->parms().coeff_modulus().size();
+        size_t n_sp_rns = context_->first_context_data()->parms().n_special_primes();
+        size_t decomp_mod_count = (n_ct_rns + n_sp_rns - 1) / n_sp_rns;
         auto &key_context_data = *context_->key_context_data();
         auto &key_parms = key_context_data.parms();
         auto &key_modulus = key_parms.coeff_modulus();
 
         // Size check
-        if (!product_fits_in(coeff_count, decomp_mod_count))
+        if (!product_fits_in(coeff_count, n_ct_rns))
         {
             throw logic_error("invalid parameters");
         }
 
         // KSwitchKeys data allocated from pool given by MemoryManager::GetPool.
         destination.resize(decomp_mod_count);
-
-        SEAL_ITERATE(iter(new_key, key_modulus, destination, size_t(0)), decomp_mod_count, [&](auto I) {
+        SEAL_ITERATE(iter(size_t(0), destination), decomp_mod_count, [&](auto I) {
             SEAL_ALLOCATE_GET_COEFF_ITER(temp, coeff_count, pool_);
-            encrypt_zero_symmetric(
-                secret_key_, context_, key_context_data.parms_id(), true, save_seed, get<2>(I)->data());
-            uint64_t factor = barrett_reduce_63(key_modulus.back().value(), *get<1>(I));
-            multiply_poly_scalar_coeffmod(get<0>(I), coeff_count, factor, *get<1>(I), temp);
+            encrypt_zero_symmetric(secret_key_, context_, key_context_data.parms_id(), true, save_seed, destination[get<0>(I)].data());
+            size_t rns0 = get<0>(I) * n_sp_rns;
+            size_t rns1 = std::min(rns0 + n_sp_rns, n_ct_rns);
 
-            // We use the SeqIter at get<3>(I) to find the i-th RNS factor of the first destination polynomial.
-            CoeffIter destination_iter = (*iter(get<2>(I)->data()))[get<3>(I)];
-            add_poly_coeffmod(destination_iter, temp, coeff_count, *get<1>(I), destination_iter);
+            for (size_t rns = rns0; rns < rns1; ++rns) {
+                uint64_t factor{1}; // product of all special rns over mod qi.
+                for (size_t k = 0; k < n_sp_rns; ++k) {
+                    factor = multiply_uint_mod(factor, key_modulus[n_ct_rns + k].value(), key_modulus[rns]);
+                }
+                // We use the SeqIter at get<3>(I) to find the i-th RNS factor of the first destination polynomial.
+                CoeffIter destination_iter = (*iter(get<1>(I)->data()))[rns];
+
+                multiply_poly_scalar_coeffmod(*(new_key + rns), coeff_count, factor, key_modulus[rns], temp);
+                // We use the SeqIter at get<3>(I) to find the i-th RNS factor of the first destination polynomial.
+                add_poly_coeffmod(destination_iter, temp, coeff_count, key_modulus[rns], destination_iter);
+            }
         });
+
     }
 
     void KeyGenerator::generate_kswitch_keys(

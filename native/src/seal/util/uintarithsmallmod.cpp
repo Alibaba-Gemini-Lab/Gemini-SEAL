@@ -171,5 +171,12 @@ namespace seal
             };
             return barrett_reduce_128(accumulator, modulus);
         }
+
+        FastMulMod::FastMulMod(uint64_t cnst, uint64_t p) : cnst(cnst), p(p) {
+            uint64_t cnst_128[2]{0, cnst};
+            uint64_t shoup[2];
+            divide_uint128_inplace(cnst_128, p, shoup);
+            cnst_shoup = shoup[0];  // cnst_shoup = cnst * 2^64 / p
+        }
     } // namespace util
 } // namespace seal

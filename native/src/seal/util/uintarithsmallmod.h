@@ -303,5 +303,23 @@ namespace seal
 
         SEAL_NODISCARD std::uint64_t dot_product_mod(
             const std::uint64_t *operand1, const std::uint64_t *operand2, std::size_t count, const Modulus &modulus);
+        // Fast f(x) = x * y mod p for fixed y.
+        struct FastMulMod {
+            std::uint64_t cnst, p;
+            std::uint64_t cnst_shoup;
+
+            explicit FastMulMod(std::uint64_t cnst, std::uint64_t p);
+            inline std::uint64_t operator()(std::uint64_t x) const {
+                uint64_t t = lazy(x);
+                return t - ((p & -static_cast<std::uint64_t>(t < p)) ^ p);
+            }
+
+            inline std::uint64_t lazy(std::uint64_t x) const {
+                unsigned long long hw64;
+                multiply_uint64_hw64(x, cnst_shoup, &hw64);
+                std::uint64_t q = static_cast<std::uint64_t>(hw64) * p;
+                return (x * cnst - q);
+            }
+        };
     } // namespace util
 } // namespace seal

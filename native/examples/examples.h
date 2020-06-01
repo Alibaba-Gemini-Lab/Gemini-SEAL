@@ -85,6 +85,8 @@ inline void print_parameters(std::shared_ptr<seal::SEALContext> context)
     /*
     Print the size of the true (product) coefficient modulus.
     */
+    std::cout << "|   #special ";
+    std::cout << context_data.parms().n_special_primes() << std::endl;
     std::cout << "|   coeff_modulus size: ";
     std::cout << context_data.total_coeff_modulus_bit_count() << " (";
     auto coeff_modulus = context_data.parms().coeff_modulus();

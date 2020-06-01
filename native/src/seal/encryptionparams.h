@@ -202,6 +202,17 @@ namespace seal
             compute_parms_id();
         }
 
+        inline void set_n_special_primes(int n)
+        {
+            // Check that a scheme is set
+            if (n < 1)
+            {
+                throw std::logic_error("set_n_special_primes: n is not supported");
+            }
+
+            n_special_primes_ = static_cast<size_t>(n);
+        }
+
         /**
         Sets the plaintext modulus parameter. The plaintext modulus is an integer
         modulus represented by the Modulus class. The plaintext modulus
@@ -300,6 +311,14 @@ namespace seal
         SEAL_NODISCARD inline auto random_generator() const noexcept -> std::shared_ptr<UniformRandomGeneratorFactory>
         {
             return random_generator_;
+        }
+
+        /**
+        Returns the number of special primes.
+        */
+        SEAL_NODISCARD inline size_t n_special_primes() const noexcept
+        {
+            return n_special_primes_;
         }
 
         /**
@@ -488,6 +507,8 @@ namespace seal
         MemoryPoolHandle pool_ = MemoryManager::GetPool();
 
         scheme_type scheme_;
+
+        std::size_t n_special_primes_ = 1;
 
         std::size_t poly_modulus_degree_ = 0;
 

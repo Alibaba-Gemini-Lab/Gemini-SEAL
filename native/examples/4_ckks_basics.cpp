@@ -71,7 +71,8 @@ void example_ckks_basics()
     */
     size_t poly_modulus_degree = 8192;
     parms.set_poly_modulus_degree(poly_modulus_degree);
-    parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 60, 40, 40, 60 }));
+    parms.set_n_special_primes(3);
+    parms.set_coeff_modulus(CoeffModulus::Create(poly_modulus_degree, { 55, 40, 40, 50, 50, 50 }));
 
     /*
     We choose the initial scale to be 2^40. At the last level, this leaves us
@@ -82,7 +83,7 @@ void example_ckks_basics()
     */
     double scale = pow(2.0, 40);
 
-    auto context = SEALContext::Create(parms);
+    auto context = SEALContext::Create(parms, true, sec_level_type::none);
     print_parameters(context);
     cout << endl;
 
