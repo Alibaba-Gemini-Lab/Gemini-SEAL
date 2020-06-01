@@ -1,19 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT license.
 
-#include "gtest/gtest.h"
-#include "seal/util/uintcore.h"
 #include "seal/util/uintarithmod.h"
-#include <cstdint>
+#include "seal/util/uintcore.h"
 #include <algorithm>
+#include <cstdint>
+#include "gtest/gtest.h"
 
 using namespace seal::util;
 using namespace std;
 
-namespace SEALTest
+namespace sealtest
 {
-   namespace util
-   {
+    namespace util
+    {
         TEST(UIntArithMod, IncrementUIntMod)
         {
             MemoryPool &pool = *global_variables::global_memory_pool;
@@ -172,7 +172,7 @@ namespace SEALTest
             ASSERT_EQ(0x8000000000000000ULL, value[1]);
         }
 
-        TEST(UIntArithMod, AddUIntUIntMod)
+        TEST(UIntArithMod, AddUIntMod)
         {
             MemoryPool &pool = *global_variables::global_memory_pool;
             auto value1(allocate_uint(2, pool));
@@ -229,7 +229,7 @@ namespace SEALTest
             ASSERT_EQ(static_cast<uint64_t>(0xFFFFFFFFFFFFFFFF), value1[1]);
         }
 
-        TEST(UIntArithMod, SubUIntUIntMod)
+        TEST(UIntArithMod, SubUIntMod)
         {
             MemoryPool &pool = *global_variables::global_memory_pool;
             auto value1(allocate_uint(2, pool));
@@ -349,5 +349,5 @@ namespace SEALTest
             ASSERT_EQ(static_cast<uint64_t>(1052541512), value[0]);
             ASSERT_EQ(static_cast<uint64_t>(0), value[1]);
         }
-   }
-}
+    } // namespace util
+} // namespace sealtest
