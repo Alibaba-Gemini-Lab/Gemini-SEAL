@@ -22,7 +22,8 @@ namespace seal
 
             NTTTables(NTTTables &copy)
                 : pool_(copy.pool_), root_(copy.root_), coeff_count_power_(copy.coeff_count_power_),
-                  coeff_count_(copy.coeff_count_), modulus_(copy.modulus_), inv_degree_modulo_(copy.inv_degree_modulo_)
+                  coeff_count_(copy.coeff_count_), modulus_(copy.modulus_), inv_degree_modulo_(copy.inv_degree_modulo_),
+                  scaled_inv_degree_(copy.scaled_inv_degree_), reduce_precomp_(copy.reduce_precomp_)
             {
                 root_powers_ = allocate_uint(coeff_count_, pool_);
                 inv_root_powers_ = allocate_uint(coeff_count_, pool_);
@@ -41,6 +42,22 @@ namespace seal
             {
                 return root_;
             }
+
+			SEAL_NODISCARD inline const uint64_t* root_powers() const {
+				return root_powers_.get();
+			}
+
+			SEAL_NODISCARD inline const uint64_t* scaled_root_powers() const {
+				return scaled_root_powers_.get();
+			}
+
+			SEAL_NODISCARD inline const uint64_t* inv_root_powers() const {
+				return inv_root_powers_.get();
+			}
+
+			SEAL_NODISCARD inline const uint64_t* scaled_inv_root_powers() const {
+				return scaled_inv_root_powers_.get();
+			}
 
             SEAL_NODISCARD inline auto get_from_root_powers(std::size_t index) const -> std::uint64_t
             {
@@ -62,6 +79,16 @@ namespace seal
                 }
 #endif
                 return scaled_root_powers_[index];
+            }
+
+            SEAL_NODISCARD inline auto get_scaled_inv_degree_modulo() const -> const std::uint64_t
+            {
+                return scaled_inv_degree_;
+            }
+
+            SEAL_NODISCARD inline auto get_reduce_precomp() const -> const std::uint64_t
+            {
+                return reduce_precomp_;
             }
 
             SEAL_NODISCARD inline auto get_from_inv_root_powers(std::size_t index) const -> std::uint64_t
@@ -144,6 +171,9 @@ namespace seal
             Pointer<std::uint64_t> scaled_inv_root_powers_;
 
             std::uint64_t inv_degree_modulo_ = 0;
+            std::uint64_t scaled_inv_degree_ = 0;
+            // 2^64 mod p
+            std::uint64_t reduce_precomp_ = 0;
         };
 
         /**

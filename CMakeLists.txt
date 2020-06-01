@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT license.
 
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.10)
 
 ###################################################
 # Project SEAL includes the following components: #
@@ -47,7 +47,7 @@ message(STATUS "Microsoft SEAL debug mode: ${SEAL_DEBUG}")
 # [Option] SEAL_USE_CXX17
 # Should we use C++14 or C++17?
 set(SEAL_USE_CXX17_OPTION_STR "Use C++17")
-option(SEAL_USE_CXX17 ${SEAL_USE_CXX17_OPTION_STR} ON)
+option(SEAL_USE_CXX17 ${SEAL_USE_CXX17_OPTION_STR} OFF)
 
 # Conditionally enable features from C++17
 set(SEAL_USE_STD_BYTE OFF)
@@ -238,7 +238,7 @@ set(THIRDPARTY_DIR ${SEAL_SOURCE_DIR}/thirdparty)
 
 # [option] SEAL_USE_MSGSL
 set(SEAL_USE_MSGSL_OPTION_STR "Use Microsoft GSL")
-option(SEAL_USE_MSGSL ${SEAL_USE_MSGSL_OPTION_STR} ON)
+option(SEAL_USE_MSGSL ${SEAL_USE_MSGSL_OPTION_STR} OFF)
 
 # Download and configure
 if(SEAL_USE_MSGSL AND NOT MSVC)
@@ -293,7 +293,7 @@ endif()
 
 # [option] SEAL_USE_ZLIB
 set(SEAL_USE_ZLIB_OPTION_STR "Use ZLIB for compressed serialization")
-option(SEAL_USE_ZLIB ${SEAL_USE_ZLIB_OPTION_STR} ON)
+option(SEAL_USE_ZLIB ${SEAL_USE_ZLIB_OPTION_STR} OFF)
 
 # ZLIB has no VERSION given to project(), needs to suppress CMP0048 warning
 if(SEAL_USE_ZLIB AND NOT MSVC)
@@ -698,10 +698,10 @@ install(
     DESTINATION ${SEAL_CONFIG_INSTALL_DIR})
 
 # Version file; we require exact version match for downstream
-write_basic_package_version_file(
-    ${SEAL_CONFIG_VERSION_FILENAME}
-    VERSION ${SEAL_VERSION}
-    COMPATIBILITY SameMinorVersion)
+# write_basic_package_version_file(
+#     ${SEAL_CONFIG_VERSION_FILENAME}
+#     VERSION ${SEAL_VERSION}
+#     COMPATIBILITY SameMinorVersion)
 
 # Install config and module files
 install(
