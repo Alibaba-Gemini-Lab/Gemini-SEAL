@@ -304,8 +304,8 @@ namespace seal
             for (; h > 2; m <<= 1, h >>= 1) {
                 // invariant: h * m = degree / 2
                 // different buttefly groups
-                auto x0 = operand;
-                auto x1 = x0 + h; // invariant: x1 = x0 + h during the iteration
+                uint64_t *x0 = operand;
+                uint64_t *x1 = x0 + h; // invariant: x1 = x0 + h during the iteration
                 for (size_t r = 0; r < m; ++r, ++w, ++wshoup) {
                     for (size_t i = 0; i < h; i += 4) { // unrolling
                         sntt.ForwardLazy(x0++, x1++, *w, *wshoup);
@@ -320,8 +320,8 @@ namespace seal
 
             // m = degree / 4, h = 2
             m = n >> 2;
-            auto x0 = operand;
-            auto x1 = x0 + 2;
+            uint64_t *x0 = operand;
+            uint64_t *x1 = x0 + 2;
             for (size_t r = 0; r < m; ++r, ++w, ++wshoup) { // unrolling
                 sntt.ForwardLazy(x0++, x1++, *w, *wshoup);
                 sntt.ForwardLazy(x0, x1, *w, *wshoup); // combine the incr to following steps
@@ -341,36 +341,41 @@ namespace seal
             // At the end operand[0 .. n) stay in [0, 4p).
         }
 
-        // Inverse negacyclic NTT using Harvey's butterfly. (See Patrick Longa and Michael Naehrig).
         void inverse_ntt_negacyclic_harvey_lazy(CoeffIter operand, const NTTTables &tables)
         {
+#ifdef SEAL_DEBUG
+            if (!operand)
+            {
+                throw invalid_argument("operand");
+            }
+#endif
             const uint64_t p = tables.modulus().value();
             const size_t n = 1L << tables.coeff_count_power();
             const uint64_t *w = tables.inv_root_powers() + 1;
             const uint64_t *wshoup = tables.scaled_inv_root_powers() + 1;
-
             SlothfulNTT sntt(p, 2 * p, /*dummy*/0);
             // first loop: m = degree / 2, h = 1
+            // m > 1 to skip the last layer
             size_t m = n >> 1;
             auto x0 = operand;
             auto x1 = x0 + 1; // invariant: x1 = x0 + h during the iteration
-            for (size_t r = 0; r < m; ++r, ++w, ++wshoup) {
+            for (size_t r = 0; m > 1 && r < m; ++r, ++w, ++wshoup) {
                 sntt.BackwardLazy(x0, x1, *w, *wshoup);
                 x0 += 2;
                 x1 += 2;
             }
 
             // second loop: m = degree / 4, h = 2
+            // m > 1 to skip the last layer
             m = n >> 2;
             x0 = operand;
             x1 = x0 + 2;
-            for (size_t r = 0; r < m; ++r, ++w, ++wshoup) {
+            for (size_t r = 0; m > 1 && r < m; ++r, ++w, ++wshoup) {
                 sntt.BackwardLazy(x0++, x1++, *w, *wshoup);
                 sntt.BackwardLazy(x0, x1, *w, *wshoup);
                 x0 += 3;
                 x1 += 3;
             }
-
             // main loop: for h >= 4
             m = n >> 3;
             size_t h = 4;
@@ -390,17 +395,14 @@ namespace seal
                 }
             }
 
-            // Multiplication with n^{-1} is merged with the last layer of butterfly.
-            // Note that: the last inv_root_powers is multiplied with n^{-1} already.
-            const uint64_t inv_n = *(tables.get_inv_degree_modulo());
-            const uint64_t inv_n_shoup = tables.get_scaled_inv_degree_modulo();
-
-            x0 = operand;
-            x1 = x0 + n / 2;
-            for (size_t i = n / 2; i < n; ++i) {
-                sntt.BackwardLazyLast(x0++, x1++, inv_n, inv_n_shoup, *w, *wshoup);
-            }
             // At the end operand[0 .. n) lies in [0, 2p)
+            x0 = operand;
+            x1 = x0 + (n >> 1);
+            uint64_t inv_n = *(tables.get_inv_degree_modulo());
+            uint64_t inv_n_s = tables.get_scaled_inv_degree_modulo();
+            for (size_t r = n >> 1; r < n; ++r) {
+                sntt.BackwardLazyLast(x0++, x1++, inv_n, inv_n_s, *w, *wshoup);
+            }
         }
     } // namespace util
 } // namespace seal
