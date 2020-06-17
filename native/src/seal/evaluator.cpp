@@ -1993,6 +1993,9 @@ namespace seal
         }
     }
 
+#if 1//SEAL_USE_MULTIPLE_SPECIAL_PRIMES
+    #include "multi_special_primes.cpp"
+#else
     void Evaluator::switch_key_inplace(
         Ciphertext &encrypted, ConstRNSIter target_iter, const KSwitchKeys &kswitch_keys, size_t kswitch_keys_index,
         MemoryPoolHandle pool)
@@ -2239,4 +2242,5 @@ namespace seal
             });
         });
     }
+#endif
 } // namespace seal

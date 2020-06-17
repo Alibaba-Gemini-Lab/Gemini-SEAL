@@ -40,6 +40,9 @@ static_assert(sizeof(unsigned long long) == 8, "Require sizeof(unsigned long lon
 #define SEAL_USER_MOD_BIT_COUNT_MAX 60
 #define SEAL_USER_MOD_BIT_COUNT_MIN 2
 
+// Allow multiple special primes
+#define SEAL_USE_MULTIPLE_SPECIAL_PRIMES 1
+
 // Bounds for bit-length of the plaintext modulus
 #define SEAL_PLAIN_MOD_BIT_COUNT_MAX SEAL_USER_MOD_BIT_COUNT_MAX
 #define SEAL_PLAIN_MOD_BIT_COUNT_MIN SEAL_USER_MOD_BIT_COUNT_MIN
