@@ -406,7 +406,7 @@ namespace seal
         }
 
         // Create GaloisTool
-        context_data.galois_tool_ = allocate<GaloisTool>(pool_, coeff_count_power, pool_);
+        context_data.galois_tool_ = allocate<GaloisTool>(pool_, parms.galois_generator(), coeff_count_power, pool_);
 
         // Check whether the coefficient modulus consists of a set of primes that are in decreasing order
         context_data.qualifiers_.using_descending_modulus_chain = true;

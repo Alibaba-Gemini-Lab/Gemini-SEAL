@@ -19,7 +19,8 @@ namespace seal
         class GaloisTool
         {
         public:
-            GaloisTool(int coeff_count_power, MemoryPoolHandle pool) : pool_(std::move(pool))
+            GaloisTool(std::uint32_t gen, int coeff_count_power, MemoryPoolHandle pool) 
+              : pool_(std::move(pool)), generator_(gen)
             {
                 if (!pool_)
                 {
@@ -166,7 +167,7 @@ namespace seal
 
             std::size_t coeff_count_ = 0;
 
-            static constexpr std::uint32_t generator_ = 3;
+            std::uint32_t generator_ = 3;
 
             mutable Pointer<Pointer<std::uint32_t>> permutation_tables_;
 

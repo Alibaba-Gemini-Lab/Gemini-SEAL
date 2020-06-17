@@ -21,11 +21,15 @@ namespace seal
             stream.exceptions(ios_base::badbit | ios_base::failbit);
 
             uint64_t poly_modulus_degree64 = static_cast<uint64_t>(poly_modulus_degree_);
+            uint64_t n_special_primes = static_cast<uint64_t>(n_special_primes_);
+            uint64_t galois_generator = static_cast<uint64_t>(galois_generator_);
             uint64_t coeff_modulus_size64 = static_cast<uint64_t>(coeff_modulus_.size());
             uint8_t scheme = static_cast<uint8_t>(scheme_);
 
             stream.write(reinterpret_cast<const char *>(&scheme), sizeof(uint8_t));
             stream.write(reinterpret_cast<const char *>(&poly_modulus_degree64), sizeof(uint64_t));
+            stream.write(reinterpret_cast<const char *>(&n_special_primes), sizeof(uint64_t));
+            stream.write(reinterpret_cast<const char *>(&galois_generator), sizeof(uint64_t));
             stream.write(reinterpret_cast<const char *>(&coeff_modulus_size64), sizeof(uint64_t));
             for (const auto &mod : coeff_modulus_)
             {
@@ -73,6 +77,16 @@ namespace seal
                 throw logic_error("poly_modulus_degree is invalid");
             }
 
+            uint64_t n_special_primes = 0;
+            stream.read(reinterpret_cast<char *>(&n_special_primes), sizeof(uint64_t));
+
+            uint64_t galois_generator = 0;
+            stream.read(reinterpret_cast<char *>(&galois_generator), sizeof(uint64_t));
+            if (galois_generator != 3 && galois_generator != 5)
+            {
+                throw logic_error("galois generator is invalid");
+            }
+
             // Read the coeff_modulus size
             uint64_t coeff_modulus_size64 = 0;
             stream.read(reinterpret_cast<char *>(&coeff_modulus_size64), sizeof(uint64_t));
@@ -91,6 +105,12 @@ namespace seal
                 coeff_modulus.back().load(stream);
             }
 
+            if ((n_special_primes > 1 && n_special_primes >= coeff_modulus_size64)
+                || n_special_primes < 1)
+            {
+                throw logic_error("n_special_primes is invalid");
+            }
+
             // Read the plain_modulus
             Modulus plain_modulus;
             plain_modulus.load(stream);
@@ -102,6 +122,8 @@ namespace seal
             // Only BFV uses plain_modulus; set_plain_modulus checks that for
             // other schemes it is zero
             parms.set_plain_modulus(plain_modulus);
+            parms.set_n_special_primes(n_special_primes);
+            parms.set_galois_generator(galois_generator);
 
             // Set the loaded parameters
             swap(*this, parms);
@@ -128,6 +150,8 @@ namespace seal
         size_t total_uint64_count = add_safe(
             size_t(1), // scheme
             size_t(1), // poly_modulus_degree
+            size_t(1), // n_special_primes
+            size_t(1), // galois_generator
             coeff_modulus_size, plain_modulus_.uint64_count());
 
         auto param_data(allocate_uint(total_uint64_count, pool_));
@@ -138,6 +162,8 @@ namespace seal
 
         // Write the poly_modulus_degree. Note that it will always be positive.
         *param_data_ptr++ = static_cast<uint64_t>(poly_modulus_degree_);
+        *param_data_ptr++ = static_cast<uint64_t>(n_special_primes_);
+        *param_data_ptr++ = static_cast<uint64_t>(galois_generator_);
 
         for (const auto &mod : coeff_modulus_)
         {
