@@ -42,6 +42,26 @@ namespace seal
                 return root_;
             }
 
+            SEAL_NODISCARD inline const uint64_t *root_powers() const
+            {
+                return root_powers_.get();
+            }
+
+            SEAL_NODISCARD inline const uint64_t *scaled_root_powers() const
+            {
+                return scaled_root_powers_.get();
+            }
+
+            SEAL_NODISCARD inline const uint64_t *inv_root_powers() const
+            {
+                return inv_root_powers_.get();
+            }
+
+            SEAL_NODISCARD inline const uint64_t *scaled_inv_root_powers() const
+            {
+                return scaled_inv_root_powers_.get();
+            }
+
             SEAL_NODISCARD inline auto get_from_root_powers(std::size_t index) const -> std::uint64_t
             {
 #ifdef SEAL_DEBUG
@@ -89,6 +109,16 @@ namespace seal
             SEAL_NODISCARD inline auto get_inv_degree_modulo() const -> const std::uint64_t *
             {
                 return &inv_degree_modulo_;
+            }
+
+            SEAL_NODISCARD inline auto get_scaled_inv_degree_modulo() const -> const std::uint64_t
+            {
+                return scaled_inv_degree_;
+            }
+
+            SEAL_NODISCARD inline auto get_reduce_precomp() const -> const std::uint64_t
+            {
+                return reduce_precomp_;
             }
 
             SEAL_NODISCARD inline const Modulus &modulus() const
@@ -144,6 +174,10 @@ namespace seal
             Pointer<std::uint64_t> scaled_inv_root_powers_;
 
             std::uint64_t inv_degree_modulo_ = 0;
+
+            std::uint64_t scaled_inv_degree_ = 0;
+            // 2^64 mod p
+            std::uint64_t reduce_precomp_ = 0;
         };
 
         /**

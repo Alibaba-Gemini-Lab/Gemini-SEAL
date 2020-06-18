@@ -1993,8 +1993,8 @@ namespace seal
         }
     }
 
-#if 1//SEAL_USE_MULTIPLE_SPECIAL_PRIMES
-    #include "multi_special_primes.cpp"
+#if 0 // SEAL_USE_MULTIPLE_SPECIAL_PRIMES
+#include "multi_special_primes.cpp"
 #else
     void Evaluator::switch_key_inplace(
         Ciphertext &encrypted, ConstRNSIter target_iter, const KSwitchKeys &kswitch_keys, size_t kswitch_keys_index,
@@ -2199,21 +2199,23 @@ namespace seal
                 SEAL_ALLOCATE_GET_COEFF_ITER(t_ntt, coeff_count, pool);
 
                 // (ct mod 4qk) mod qi
-                const uint64_t qi = get<1>(J).value();
+                Modulus const &modulus = get<1>(J);
+                const uint64_t qi = modulus.value();
+                // Lazy substraction, results in [0, 2*qi).
+                const uint64_t fix = qi - barrett_reduce_63(qk_half, modulus);
+                uint64_t qi_lazy = qi << 1; // some multiples of qi
+
                 if (qk > qi)
                 {
-                    modulo_poly_coeffs_63(t_last, coeff_count, get<1>(J), t_ntt);
+                    modulo_poly_coeffs_63(t_last, coeff_count, modulus, t_ntt);
                 }
                 else
                 {
                     set_uint(t_last, coeff_count, t_ntt);
                 }
 
-                // Lazy substraction, results in [0, 2*qi).
-                const uint64_t fix = qi - barrett_reduce_63(qk_half, get<1>(J));
-                SEAL_ITERATE(t_ntt, coeff_count, [fix](auto K) { K += fix; });
+                SEAL_ITERATE(t_ntt, coeff_count, [fix](uint64_t &K) { K += fix; });
 
-                uint64_t qi_lazy = qi << 1; // some multiples of qi
                 if (scheme == scheme_type::CKKS)
                 {
                     // This ntt_negacyclic_harvey_lazy results in [0, 4*qi).
