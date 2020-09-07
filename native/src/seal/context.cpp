@@ -413,7 +413,7 @@ namespace seal
         }
 
         // Create GaloisTool
-        context_data.galois_tool_ = allocate<GaloisTool>(pool_, coeff_count_power, pool_);
+        context_data.galois_tool_ = allocate<GaloisTool>(pool_, parms.galois_generator(), coeff_count_power, pool_);
 
         // Done with validation and pre-computations
         return context_data;

@@ -2,7 +2,6 @@
 // Licensed under the MIT license.
 
 #pragma once
-
 #include "seal/context.h"
 #include "seal/plaintext.h"
 #include "seal/util/common.h"
