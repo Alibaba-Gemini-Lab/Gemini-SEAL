@@ -93,4 +93,5 @@ echo Running CMake configuration in %cd%
 	-DSEAL_BUILD_TESTS=OFF                                          ^
 	-DSEAL_BUILD_EXAMPLES=OFF                                       ^
 	-DSEAL_BUILD_SEAL_C=OFF                                         ^
+	-DGEMNI_SEAL=ON                                                 ^
 	--no-warn-unused-cli

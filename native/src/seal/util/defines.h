@@ -37,6 +37,7 @@ static_assert(sizeof(unsigned long long) == 8, "Require sizeof(unsigned long lon
 #define SEAL_INTERNAL_MOD_BIT_COUNT 61
 
 // Bounds for bit-length of user-defined coefficient moduli
+#define GEMINI_SEAL_USER_MOD_BIT_COUNT_MAX 58
 #define SEAL_USER_MOD_BIT_COUNT_MAX 60
 #define SEAL_USER_MOD_BIT_COUNT_MIN 2
 

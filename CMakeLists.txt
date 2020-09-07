@@ -433,6 +433,10 @@ set(SEAL_THROW_ON_TRANSPARENT_CIPHERTEXT_STR "Throw an exception when a member o
 option(SEAL_THROW_ON_TRANSPARENT_CIPHERTEXT ${SEAL_THROW_ON_TRANSPARENT_CIPHERTEXT_STR} ON)
 mark_as_advanced(FORCE SEAL_THROW_ON_TRANSPARENT_CIPHERTEXT)
 
+# Throw on multiply_plain by a zero plaintext
+set(GEMINI_SEAL "Use GEMINI-SEAL")
+option(GEMINI_SEAL ${GEMINI_SEAL} OFF)
+
 # In some non-MSVC compilers std::for_each_n is not available even when compiling as C++17
 if(SEAL_USE_STD_FOR_EACH_N)
     cmake_push_check_state(RESET)

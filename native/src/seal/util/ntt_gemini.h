@@ -2,7 +2,6 @@
 // Licensed under the MIT license.
 
 #pragma once
-
 #include "seal/memorymanager.h"
 #include "seal/modulus.h"
 #include "seal/util/defines.h"
@@ -12,9 +11,6 @@
 #include "seal/util/uintcore.h"
 #include <stdexcept>
 
-#if GEMINI_SEAL
-#include "ntt_gemini.h"
-#else
 namespace seal
 {
     namespace util
@@ -26,7 +22,8 @@ namespace seal
 
             NTTTables(NTTTables &copy)
                 : pool_(copy.pool_), root_(copy.root_), coeff_count_power_(copy.coeff_count_power_),
-                  coeff_count_(copy.coeff_count_), modulus_(copy.modulus_), inv_degree_modulo_(copy.inv_degree_modulo_)
+                  coeff_count_(copy.coeff_count_), modulus_(copy.modulus_), inv_degree_modulo_(copy.inv_degree_modulo_),
+                  reduce_precomp_(copy.reduce_precomp_)
             {
                 root_powers_ = allocate<MultiplyUIntModOperand>(coeff_count_, pool_);
                 inv_root_powers_ = allocate<MultiplyUIntModOperand>(coeff_count_, pool_);
@@ -64,6 +61,16 @@ namespace seal
                 return inv_root_powers_[index];
             }
 
+            SEAL_NODISCARD inline const MultiplyUIntModOperand *root_powers() const
+            {
+                return root_powers_.get();
+            }
+
+            SEAL_NODISCARD inline const MultiplyUIntModOperand *inv_root_powers() const
+            {
+                return inv_root_powers_.get();
+            }
+
             SEAL_NODISCARD inline const MultiplyUIntModOperand &inv_degree_modulo() const
             {
                 return inv_degree_modulo_;
@@ -72,6 +79,11 @@ namespace seal
             SEAL_NODISCARD inline const Modulus &modulus() const
             {
                 return modulus_;
+            }
+
+            SEAL_NODISCARD inline const MultiplyUIntModOperand& reduce_precomp() const
+            {
+                return reduce_precomp_;
             }
 
             SEAL_NODISCARD inline int coeff_count_power() const
@@ -107,11 +119,15 @@ namespace seal
 
             MultiplyUIntModOperand inv_degree_modulo_;
 
+            MultiplyUIntModOperand reduce_precomp_;
+
             // Size coeff_count_
             Pointer<MultiplyUIntModOperand> root_powers_;
 
             // Size coeff_count_
             Pointer<MultiplyUIntModOperand> inv_root_powers_;
+
+            // 2^64 mod p
         };
 
         /**
@@ -307,4 +323,3 @@ namespace seal
         }
     } // namespace util
 } // namespace seal
-#endif

@@ -39,3 +39,5 @@
 // Third-party dependencies
 #cmakedefine SEAL_USE_MSGSL
 #cmakedefine SEAL_USE_ZLIB
+#cmakedefine01 GEMINI_SEAL
+
