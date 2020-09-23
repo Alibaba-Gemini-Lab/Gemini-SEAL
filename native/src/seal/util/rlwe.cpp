@@ -54,8 +54,9 @@ namespace seal
             }
         }
 
-        void sample_poly_normal(
-            shared_ptr<UniformRandomGenerator> rng, const EncryptionParameters &parms, uint64_t *destination)
+        static void sample_poly_normal(
+            shared_ptr<UniformRandomGenerator> rng, const EncryptionParameters &parms, double stddev,
+            uint64_t *destination)
         {
             auto coeff_modulus = parms.coeff_modulus();
             size_t coeff_modulus_size = coeff_modulus.size();
@@ -68,8 +69,7 @@ namespace seal
             }
 
             RandomToStandardAdapter engine(rng);
-            ClippedNormalDistribution dist(
-                0, global_variables::noise_standard_deviation, global_variables::noise_max_deviation);
+            ClippedNormalDistribution dist(0, stddev, stddev * global_variables::noise_distribution_width_multiplier);
             for (size_t i = 0; i < coeff_count; i++)
             {
                 int64_t noise = static_cast<int64_t>(dist(engine));
@@ -96,6 +96,12 @@ namespace seal
                     }
                 }
             }
+        }
+
+        void sample_poly_normal(
+            shared_ptr<UniformRandomGenerator> rng, const EncryptionParameters &parms, uint64_t *destination)
+        {
+            sample_poly_normal(rng, parms, global_variables::noise_standard_deviation, destination);
         }
 
         void sample_poly_uniform(
@@ -201,8 +207,8 @@ namespace seal
         }
 
         void encrypt_zero_symmetric(
-            const SecretKey &secret_key, shared_ptr<SEALContext> context, parms_id_type parms_id, bool is_ntt_form,
-            bool save_seed, Ciphertext &destination)
+            const SecretKey &secret_key, shared_ptr<SEALContext> context, parms_id_type parms_id, double stddev,
+            bool is_ntt_form, bool save_seed, Ciphertext &destination)
         {
 #ifdef SEAL_DEBUG
             if (!is_valid_for(secret_key, context))
@@ -210,6 +216,10 @@ namespace seal
                 throw invalid_argument("secret key is not valid for the encryption parameters");
             }
 #endif
+            if (stddev <= 0.)
+            {
+                throw invalid_argument("encrypt_zero_symmetric: invalid stddev");
+            }
             // We use a fresh memory pool with `clear_on_destruction' enabled.
             MemoryPoolHandle pool = MemoryManager::GetPool(mm_prof_opt::FORCE_NEW, true);
 
@@ -266,7 +276,7 @@ namespace seal
 
             // Sample e <-- chi
             auto noise(allocate_poly(coeff_count, coeff_modulus_size, pool));
-            sample_poly_normal(bootstrap_rng, parms, noise.get());
+            sample_poly_normal(bootstrap_rng, parms, stddev, noise.get());
 
             // Calculate -(a*s + e) (mod q) and store in c[0]
             for (size_t i = 0; i < coeff_modulus_size; i++)
@@ -304,6 +314,15 @@ namespace seal
                 c1[0] = static_cast<uint64_t>(0xFFFFFFFFFFFFFFFFULL);
                 copy_n(public_rng_seed.cbegin(), public_rng_seed.size(), c1 + 1);
             }
+        }
+
+        void encrypt_zero_symmetric(
+            const SecretKey &secret_key, shared_ptr<SEALContext> context, parms_id_type parms_id, bool is_ntt_form,
+            bool save_seed, Ciphertext &destination)
+        {
+            encrypt_zero_symmetric(
+                secret_key, context, parms_id, global_variables::noise_standard_deviation, is_ntt_form, save_seed,
+                destination);
         }
     } // namespace util
 } // namespace seal
