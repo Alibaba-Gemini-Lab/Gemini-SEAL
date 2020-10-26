@@ -612,17 +612,18 @@ namespace seal
                 throw invalid_argument("ntt_negacyclic_harvey_lazy: operand");
             }
 #endif
-            const uint64_t p = tables.modulus().value();
+            const Modulus& mod = tables.modulus();
+            const uint64_t p = mod.value();
             const uint64_t logn = tables.modulus().bit_count();
             const int max_accum_bits = tables.modulus().bit_count() + 1 + (int)std::ceil(std::log2(1. * logn));
             if (max_accum_bits < 64)
             {
-                SlothfulNTT doer(p, p << 1u, tables.reduce_precomp());
+                SlothfulNTT doer(mod, p << 1u, tables.reduce_precomp());
                 do_ntt_negacyclic_lazy(operand, tables, doer);
             }
             else
             {
-                NormalNTT doer(p, p << 1u, tables.reduce_precomp());
+                NormalNTT doer(mod, p << 1u, tables.reduce_precomp());
                 do_ntt_negacyclic_lazy(operand, tables, doer);
             }
         }
@@ -635,8 +636,9 @@ namespace seal
                 throw invalid_argument("inverse_ntt_negacyclic_harvey: operand");
             }
 #endif
-            const uint64_t p = tables.modulus().value();
-            NormalNTT doer(p, p << 1u, tables.reduce_precomp());
+            const Modulus& mod = tables.modulus();
+            const uint64_t p = mod.value();
+            NormalNTT doer(mod, p << 1u, tables.reduce_precomp());
             do_inverse_ntt_negacyclic_lazy(operand, tables, doer);
         }
 #endif
