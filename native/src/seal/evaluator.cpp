@@ -2006,7 +2006,6 @@ namespace seal
         auto &parms = context_data.parms();
         auto &key_context_data = *context_->key_context_data();
         auto &key_parms = key_context_data.parms();
-        auto scheme = parms.scheme();
 
         // Verify parameters.
         if (!is_metadata_valid_for(encrypted, context_) || !is_buffer_valid(encrypted))

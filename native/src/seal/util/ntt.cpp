@@ -489,7 +489,6 @@ namespace seal
         template <class NTTDoer>
         inline void do_ntt_negacyclic_lazy(CoeffIter operand, const NTTTables &tables, const NTTDoer &base)
         {
-            const uint64_t p = tables.modulus().value();
             const size_t n = size_t(1) << tables.coeff_count_power();
             const MultiplyUIntModOperand *w = tables.root_powers() + 1;
 
@@ -544,7 +543,6 @@ namespace seal
         template <class NTTDoer>
         inline void do_inverse_ntt_negacyclic_lazy(CoeffIter operand, const NTTTables &tables, const NTTDoer &base)
         {
-            const uint64_t p = tables.modulus().value();
             const size_t n = 1L << tables.coeff_count_power();
             const MultiplyUIntModOperand *w = tables.inv_root_powers() + 1;
             // first loop: m = degree / 2, h = 1
