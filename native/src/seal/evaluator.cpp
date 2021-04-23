@@ -1909,7 +1909,7 @@ namespace seal
         // DO NOT CHANGE EXECUTION ORDER OF FOLLOWING SECTION
         // BEGIN: Apply Galois for each ciphertext
         // Execution order is sensitive, since apply_galois is not inplace!
-        if (encrypted.is_ntt_form())
+        if (!encrypted.is_ntt_form())
         {
             // !!! DO NOT CHANGE EXECUTION ORDER!!!
 
