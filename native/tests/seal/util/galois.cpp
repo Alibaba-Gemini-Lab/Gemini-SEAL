@@ -19,10 +19,10 @@ namespace sealtest
         TEST(GaloisToolTest, Create)
         {
             auto pool = MemoryManager::GetPool();
-            ASSERT_THROW(GaloisTool galois_tool(0, pool), invalid_argument);
-            ASSERT_THROW(GaloisTool galois_tool(18, pool), invalid_argument);
-            ASSERT_NO_THROW(GaloisTool galois_tool(1, pool));
-            ASSERT_NO_THROW(GaloisTool galois_tool(17, pool));
+            ASSERT_THROW(GaloisTool galois_tool(3, 0, pool), invalid_argument);
+            ASSERT_THROW(GaloisTool galois_tool(3, 18, pool), invalid_argument);
+            ASSERT_NO_THROW(GaloisTool galois_tool(3, 1, pool));
+            ASSERT_NO_THROW(GaloisTool galois_tool(3, 17, pool));
         }
 
         TEST(GaloisToolTest, EltFromStep)
@@ -44,7 +44,7 @@ namespace sealtest
         {
             auto pool = MemoryManager::GetPool();
             {
-                GaloisTool galois_tool(3, pool);
+                GaloisTool galois_tool(3, 3, pool);
                 auto elts = galois_tool.get_elts_from_steps({ 0, 1, -3, 2, -2, 3, -1 });
                 uint32_t elts_true[7]{ 15, 3, 3, 9, 9, 11, 11 };
                 for (size_t i = 0; i < elts.size(); i++)

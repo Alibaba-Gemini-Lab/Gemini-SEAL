@@ -170,6 +170,26 @@ namespace seal
             compute_parms_id();
         }
 
+        inline void set_n_special_primes(std::size_t n_special_primes)
+        {
+            n_special_primes_ = n_special_primes;
+
+            // Re-compute the parms_id
+            compute_parms_id();
+        }
+
+        inline void set_galois_generator(std::uint32_t gen)
+        {
+            if (gen != 3 && gen != 5)
+            {
+                throw std::logic_error("galois generator should be 3 or 5");
+            }
+            galois_generator_ = gen;
+
+            // Re-compute the parms_id
+            compute_parms_id();
+        }
+
         /**
         Sets the coefficient modulus parameter. The coefficient modulus consists
         of a list of distinct prime numbers, and is represented by a vector of
@@ -279,6 +299,16 @@ namespace seal
         SEAL_NODISCARD inline std::size_t poly_modulus_degree() const noexcept
         {
             return poly_modulus_degree_;
+        }
+
+        SEAL_NODISCARD inline std::size_t n_special_primes() const noexcept
+        {
+            return n_special_primes_;
+        }
+
+        SEAL_NODISCARD inline std::size_t galois_generator() const noexcept
+        {
+            return galois_generator_;
         }
 
         /**
@@ -491,6 +521,10 @@ namespace seal
         scheme_type scheme_;
 
         std::size_t poly_modulus_degree_ = 0;
+
+        std::size_t n_special_primes_ = 1;
+
+        std::uint32_t galois_generator_ = 3;
 
         std::vector<Modulus> coeff_modulus_{};
 
