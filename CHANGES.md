@@ -1,5 +1,37 @@
 # List of Changes
 
+## Version 3.6.4
+
+### New Features
+
+- Enabled [AddressSanitizer](https://github.com/google/sanitizers/wiki/AddressSanitizer) and [LeakSanitizer](https://github.com/google/sanitizers/wiki/AddressSanitizerLeakSanitizer) when building Microsoft SEAL [tests](native/tests/CMakeLists.txt) in Debug mode on Unix-like systems, based on [(PR 318)](https://github.com/microsoft/SEAL/pull/318).
+
+### Bug Fixes
+
+- Fixed `alloc-dealloc-mismatch` issues resolved by [(PR 318)](https://github.com/microsoft/SEAL/pull/318).
+- Fixed wrong descriptions in [serializable.h](native/src/seal/serializable.h) and [Serializable.cs](dotnet/src/Serializable.cs) reported in [(Issue 316)](https://github.com/microsoft/SEAL/issues/316).
+
+## Version 3.6.3
+
+### New Features
+
+- Added support to build Microsoft SEAL out of the box with [emscripten](https://emscripten.org/) [(PR 306)](https://github.com/microsoft/SEAL/pull/306).
+- Added support to build Microsoft SEAL with [Intel HEXL](https://github.com/intel/hexl) as an optional dependency [(PR 312)](https://github.com/microsoft/SEAL/pull/312).
+
+### Other
+
+- Improved the error message when attempting to configure with `BUILD_SHARED_LIBS=ON` and `SEAL_BUILD_SEAL_C=ON` [(Issue 284)](https://github.com/microsoft/SEAL/issues/284).
+- Added `seal::random_bytes` function in [randomgen.h](native/src/seal/randomgen.h).
+- Removed redundant `is_metadata_valid_for` invocations reported in [(Issue 313)](https://github.com/microsoft/SEAL/issues/313).
+- Minor bug fixes
+
+### File Changes
+
+- [cmake/ExternalIntelHEXL.cmake](cmake/ExternalIntelHEXL.cmake)
+- [native/src/seal/util/intel_seal_ext.h](native/src/seal/util/intel_seal_ext.h)
+
+#### New files
+
 ## Version 3.6.2
 
 ### Hotfix - 2/18/2021
